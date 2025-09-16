@@ -1,0 +1,21 @@
+# Node/TypeScript
+node_modules/
+dist/
+.turbo/
+.vite/
+.pnpm-store/
+coverage/
+
+# Env
+.env*
+!.env.example
+
+# OS/Editor
+.DS_Store
+*.log
+*.tmp
+.idea/
+.vscode/
+
+# Misc
+*.local
