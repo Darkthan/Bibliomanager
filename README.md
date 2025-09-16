@@ -30,6 +30,15 @@ Exemple:
 PORT=4000 npm run dev
 ```
 
+## Front-end (Vite + React)
+
+- Dossier: `client/`
+- Dev client: `npm run dev:client` (Vite sur `http://localhost:5173`)
+- Build client: `npm run build:client` → fichiers dans `dist/client/`
+- Le serveur Node sert automatiquement `dist/client` en production (fallback SPA sur `index.html`).
+
+Pendant le dev, lancez le backend (`npm run dev`) et le front (`npm run dev:client`) en parallèle.
+
 ## Versioning
 
 Versionnement sémantique. Tant que le projet n’est pas en production, toutes les versions commencent par `0.x.x`. Première balise: `v0.1.0`.
