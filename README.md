@@ -5,7 +5,7 @@ Gestionnaire de bibliothèque (WIP). Ce dépôt contient la structure de base, l
 ## Démarrage rapide
 
 - Installer la stack (voir `STACK.md`), puis:
-- Développement: `npm run dev`
+- Développement: `npm run dev` (serveur sur `http://localhost:3000` par défaut)
 - Tests: `npm test`
 - Build: `npm run build`
 
@@ -18,6 +18,16 @@ assets/         # Fichiers statiques
 scripts/        # Scripts d’automatisation
 docs/           # Documentation (architecture, ADRs)
 .github/        # Workflows CI et templates
+```
+
+## Serveur et port
+
+Le serveur HTTP intégré écoute sur la variable d’environnement `PORT` (défaut `3000`).
+
+Exemple:
+
+```sh
+PORT=4000 npm run dev
 ```
 
 ## Versioning
