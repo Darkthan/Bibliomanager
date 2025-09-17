@@ -42,6 +42,18 @@ export function App() {
   const [bookLookupError, setBookLookupError] = useState<string | null>(null);
   const [editingBookId, setEditingBookId] = useState<number | null>(null);
   const [loanListQuery, setLoanListQuery] = useState('');
+  const [route, setRoute] = useState('/livres/disponibles');
+  useEffect(() => {
+    const sync = () => setRoute(window.location.pathname || '/');
+    window.addEventListener('popstate', sync);
+    sync();
+    return () => window.removeEventListener('popstate', sync);
+  }, []);
+  function navigate(to: string) {
+    if (to === route) return;
+    window.history.pushState({}, '', to);
+    setRoute(to);
+  }
   const isAddDisabled = useMemo(() => title.trim().length === 0 || author.trim().length === 0, [title, author]);
 
   // Health check
@@ -352,6 +364,26 @@ export function App() {
       });
   }, [loans, loanFilter, books, loanListQuery]);
 
+  const availableBooks = useMemo(() => {
+    const activeIds = new Set(loans.filter((l) => !loanUtils.isReturned(l)).map((l) => l.bookId));
+    const q = query.trim().toLowerCase();
+    let list = books.filter((b) => !activeIds.has(b.id));
+    if (q) {
+      list = list.filter((b) =>
+        b.title.toLowerCase().includes(q) ||
+        b.author.toLowerCase().includes(q) ||
+        (b.isbn || '').toLowerCase().includes(q) ||
+        (b.barcode || '').toLowerCase().includes(q)
+      );
+    }
+    list = list.sort((a, b) => {
+      if (sortBy === 'recent') return b.createdAt - a.createdAt;
+      if (sortBy === 'title') return a.title.localeCompare(b.title);
+      return a.author.localeCompare(b.author);
+    });
+    return list;
+  }, [books, loans, query, sortBy]);
+
   return (
     <main
       style={{
@@ -359,7 +391,7 @@ export function App() {
         padding: 24,
         display: 'grid',
         gap: 16,
-        maxWidth: 860,
+        maxWidth: 960,
         margin: '0 auto',
       }}
     >
@@ -382,6 +414,19 @@ export function App() {
         </span>
       </header>
 
+      <nav style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <a href="/livres/disponibles" onClick={(e) => { e.preventDefault(); navigate('/livres/disponibles'); }} style={{ padding: '8px 10px', border: '1px solid #ddd', borderRadius: 6 }}>
+          Livres disponibles
+        </a>
+        <a href="/livres/nouveau" onClick={(e) => { e.preventDefault(); navigate('/livres/nouveau'); }} style={{ padding: '8px 10px', border: '1px solid #ddd', borderRadius: 6 }}>
+          Ajouter un livre
+        </a>
+        <a href="/prets" onClick={(e) => { e.preventDefault(); navigate('/prets'); }} style={{ padding: '8px 10px', border: '1px solid #ddd', borderRadius: 6 }}>
+          Prêts
+        </a>
+      </nav>
+
+      {route === '/livres/nouveau' && (
       <section style={{ padding: 16, border: '1px solid #eee', borderRadius: 8 }}>
         <h2 style={{ marginTop: 0 }}>Ajouter un livre</h2>
         <form
@@ -389,7 +434,7 @@ export function App() {
             e.preventDefault();
             addBook();
           }}
-          style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr 1fr 1fr auto' }}
+          style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr 1fr 1fr auto auto' }}
         >
           <input
             aria-label="Titre"
@@ -455,27 +500,19 @@ export function App() {
           </p>
         )}
       </section>
+      )}
 
+      {route === '/livres/disponibles' && (
       <section style={{ padding: 16, border: '1px solid #eee', borderRadius: 8 }}>
-        <h2 style={{ marginTop: 0 }}>Mes livres ({stats.total})</h2>
+        <h2 style={{ marginTop: 0 }}>Livres disponibles ({availableBooks.length})</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
           <input
             aria-label="Rechercher"
-            placeholder="Rechercher par titre ou auteur"
+            placeholder="Titre, auteur, ISBN, code-barres"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', minWidth: 240 }}
           />
-          <select
-            aria-label="Filtrer par statut"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd' }}
-          >
-            <option value="all">Tous</option>
-            <option value="read">Lus</option>
-            <option value="unread">À lire</option>
-          </select>
           <select
             aria-label="Trier par"
             value={sortBy}
@@ -486,15 +523,12 @@ export function App() {
             <option value="title">Titre (A→Z)</option>
             <option value="author">Auteur (A→Z)</option>
           </select>
-          <span style={{ marginLeft: 'auto', color: '#555' }}>
-            {stats.read} lus · {stats.unread} à lire
-          </span>
         </div>
-        {visibleBooks.length === 0 ? (
-          <p>Aucun livre pour le moment. Ajoutez-en un ci-dessus.</p>
+        {availableBooks.length === 0 ? (
+          <p>Aucun livre disponible pour le moment.</p>
         ) : (
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
-            {visibleBooks.map((b) => (
+            {availableBooks.map((b) => (
               <li
                 key={b.id}
                 style={{
@@ -506,90 +540,25 @@ export function App() {
                   borderRadius: 8,
                 }}
               >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <input
-                      type="checkbox"
-                      checked={b.read}
-                      onChange={() => toggleRead(b.id)}
-                      aria-label={b.read ? 'Marquer comme à lire' : 'Marquer comme lu'}
-                    />
-                    {editingBookId === b.id ? (
-                      <input
-                        value={b.title}
-                        onChange={(e) => saveBookEdit(b.id, { title: e.target.value })}
-                        style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #ddd', flex: 1, minWidth: 180 }}
-                      />
-                    ) : (
-                      <span style={{ textDecoration: b.read ? 'line-through' : 'none' }}>{b.title}</span>
-                    )}
-                  </div>
-                  <div style={{ color: '#555', fontSize: 14 }}>
-                    {editingBookId === b.id ? (
-                      <input
-                        value={b.author}
-                        onChange={(e) => saveBookEdit(b.id, { author: e.target.value })}
-                        style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #ddd', marginTop: 6, minWidth: 180 }}
-                      />)
-                    : (
-                      <>par {b.author}</>
-                    )}
-                  </div>
-                  {(editingBookId === b.id || b.isbn || b.barcode) && (
+                <div>
+                  <div style={{ fontWeight: 600 }}>{b.title}</div>
+                  <div style={{ color: '#555', fontSize: 14 }}>par {b.author}</div>
+                  {(b.isbn || b.barcode) && (
                     <div style={{ color: '#666', fontSize: 12, marginTop: 4 }}>
-                      {editingBookId === b.id ? (
-                        <>
-                          <input
-                            placeholder="ISBN"
-                            value={b.isbn || ''}
-                            onChange={(e) => saveBookEdit(b.id, { isbn: normalizeISBN(e.target.value) })}
-                            style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #ddd', marginRight: 6 }}
-                          />
-                          <input
-                            placeholder="Code-barres"
-                            value={b.barcode || ''}
-                            onChange={(e) => saveBookEdit(b.id, { barcode: e.target.value })}
-                            style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #ddd' }}
-                          />
-                        </>
-                      ) : (
-                        <>
-                          {b.isbn && <span>ISBN: {b.isbn}</span>}
-                          {b.isbn && b.barcode && <span> · </span>}
-                          {b.barcode && <span>Code-barres: {b.barcode}</span>}
-                        </>
-                      )}
+                      {b.isbn && <span>ISBN: {b.isbn}</span>}
+                      {b.isbn && b.barcode && <span> · </span>}
+                      {b.barcode && <span>Code-barres: {b.barcode}</span>}
                     </div>
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginLeft: 12 }}>
-                  {editingBookId === b.id ? (
-                    <button
-                      onClick={() => setEditingBookId(null)}
-                      style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #6b7280', background: '#6b7280', color: 'white' }}
-                    >
-                      Terminer
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => setEditingBookId(b.id)}
-                      style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #10b981', background: '#10b981', color: 'white' }}
-                    >
-                      Éditer
-                    </button>
-                  )}
-                  <button
-                    onClick={() => removeBook(b.id)}
-                    aria-label={`Supprimer ${b.title}`}
-                    style={{
-                      padding: '8px 10px',
-                      borderRadius: 6,
-                      border: '1px solid #ef4444',
-                      background: '#ef4444',
-                      color: 'white',
-                      cursor: 'pointer',
-                    }}
-                  >
+                  <a href="/prets" onClick={(e) => { e.preventDefault(); navigate('/prets'); }} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>
+                    Prêter
+                  </a>
+                  <button onClick={() => setEditingBookId(b.id)} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #10b981', background: '#10b981', color: 'white' }}>
+                    Éditer
+                  </button>
+                  <button onClick={() => removeBook(b.id)} aria-label={`Supprimer ${b.title}`} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ef4444', background: '#ef4444', color: 'white', cursor: 'pointer' }}>
                     Supprimer
                   </button>
                 </div>
@@ -598,7 +567,9 @@ export function App() {
           </ul>
         )}
       </section>
+      )}
 
+      {route === '/prets' && (
       <section style={{ padding: 16, border: '1px solid #eee', borderRadius: 8 }}>
         <h2 style={{ marginTop: 0 }}>Prêts</h2>
         <form
@@ -840,6 +811,7 @@ export function App() {
           </ul>
         )}
       </section>
+      )}
     </main>
   );
 }
