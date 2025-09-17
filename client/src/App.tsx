@@ -46,9 +46,13 @@ export function App() {
   // Suggestions pour l'ajout (base ouverte)
   const [addQuery, setAddQuery] = useState('');
   const [showAddSuggestions, setShowAddSuggestions] = useState(false);
-  const [addSuggestions, setAddSuggestions] = useState<Array<{ title: string; authors?: string[]; isbn13?: string; isbn10?: string; coverUrl?: string }>>([]);
+  const [addSuggestions, setAddSuggestions] = useState<Array<{ title: string; authors?: string[]; isbn13?: string; isbn10?: string; coverUrl?: string; workKey?: string }>>([]);
   const [addHighlightIndex, setAddHighlightIndex] = useState(-1);
   const [addLoading, setAddLoading] = useState(false);
+  const [showEditionPicker, setShowEditionPicker] = useState(false);
+  const [editionOptions, setEditionOptions] = useState<Array<{ editionKey?: string; title?: string; publishers?: string[]; publishDate?: string; pages?: number; isbn13?: string[]; isbn10?: string[]; coverUrl?: string }>>([]);
+  const [editionLoading, setEditionLoading] = useState(false);
+  const [editionError, setEditionError] = useState<string | null>(null);
   useEffect(() => {
     const sync = () => setRoute(window.location.pathname || '/');
     window.addEventListener('popstate', sync);
@@ -338,7 +342,7 @@ export function App() {
     setBarcode('');
   }
 
-  async function addFromSuggestion(s: { title: string; authors?: string[]; isbn13?: string; isbn10?: string }) {
+  async function addFromSuggestion(s: { title: string; authors?: string[]; isbn13?: string; isbn10?: string; workKey?: string }) {
     const t = s.title || '';
     const a = Array.isArray(s.authors) && s.authors[0] ? s.authors[0] : '';
     let i = s.isbn13 || s.isbn10 || '';
@@ -363,6 +367,37 @@ export function App() {
     setIsbn(i);
     setShowAddSuggestions(false);
     setAddQuery('');
+  }
+
+  async function openEditionPicker(s: { title: string; authors?: string[]; workKey?: string }) {
+    const t = s.title || '';
+    const a = Array.isArray(s.authors) && s.authors[0] ? s.authors[0] : '';
+    setTitle(t);
+    setAuthor(a);
+    setEditionError(null);
+    setEditionOptions([]);
+    setShowAddSuggestions(false);
+    setShowEditionPicker(true);
+    try {
+      setEditionLoading(true);
+      let work = s.workKey;
+      if (!work) {
+        const r = await fetch(`/api/books/search?q=${encodeURIComponent(`${t} ${a}`.trim())}`);
+        if (r.ok) {
+          const d = await r.json();
+          work = d.results && d.results[0] && d.results[0].workKey;
+        }
+      }
+      if (!work) throw new Error('Impossible de déterminer l’œuvre');
+      const ed = await fetch(`/api/books/editions?work=${encodeURIComponent(work)}&limit=30`);
+      if (!ed.ok) throw new Error('Échec de récupération des éditions');
+      const edData = await ed.json();
+      setEditionOptions(Array.isArray(edData.results) ? edData.results : []);
+    } catch (e: any) {
+      setEditionError(e?.message || 'Erreur');
+    } finally {
+      setEditionLoading(false);
+    }
   }
 
   async function lookupBookInfo() {
@@ -634,7 +669,7 @@ export function App() {
               if (addSuggestions.length === 0) return;
               if (e.key === 'ArrowDown') { e.preventDefault(); setAddHighlightIndex((i) => (i + 1) % addSuggestions.length); }
               else if (e.key === 'ArrowUp') { e.preventDefault(); setAddHighlightIndex((i) => (i - 1 + addSuggestions.length) % addSuggestions.length); }
-              else if (e.key === 'Enter') { if (addHighlightIndex >= 0) { e.preventDefault(); addFromSuggestion(addSuggestions[addHighlightIndex]); } }
+              else if (e.key === 'Enter') { if (addHighlightIndex >= 0) { e.preventDefault(); openEditionPicker(addSuggestions[addHighlightIndex]); } }
               else if (e.key === 'Escape') { setShowAddSuggestions(false); }
             }}
             style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid #ddd', fontSize: 16 }}
@@ -654,11 +689,47 @@ export function App() {
                         <div style={{ color: '#666', fontSize: 12 }}>{s.isbn13 || s.isbn10 || ''}</div>
                       </div>
                     </div>
-                    <button type="button" onMouseDown={(e) => { e.preventDefault(); addFromSuggestion(s); }} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #10b981', background: '#10b981', color: 'white' }}>Ajouter</button>
+                    <button type="button" onMouseDown={(e) => { e.preventDefault(); openEditionPicker(s); }} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>Choisir édition</button>
                   </div>
                 </li>
               ))}
             </ul>
+          )}
+          {showEditionPicker && (
+            <div style={{ position: 'absolute', zIndex: 10, top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #ddd', borderRadius: 10, marginTop: 6, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <strong>Choisir une édition</strong>
+                <button type="button" onMouseDown={(e) => { e.preventDefault(); setShowEditionPicker(false); }} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #ddd', background: '#f9fafb' }}>Fermer</button>
+              </div>
+              {editionLoading && <div style={{ padding: 8, color: '#555' }}>Chargement des éditions…</div>}
+              {editionError && <div style={{ padding: 8, color: '#8A1F12' }}>{editionError}</div>}
+              {!editionLoading && !editionError && editionOptions.length === 0 && (
+                <div style={{ padding: 8, color: '#555' }}>Aucune édition trouvée.</div>
+              )}
+              {!editionLoading && editionOptions.length > 0 && (
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0, maxHeight: 320, overflowY: 'auto', display: 'grid', gap: 6 }}>
+                  {editionOptions.map((ed, i) => {
+                    const pubs = (ed.publishers || []).join(', ');
+                    const is13 = ed.isbn13 && ed.isbn13[0];
+                    const is10 = ed.isbn10 && ed.isbn10[0];
+                    const isbnText = is13 || is10 || 'ISBN indisponible';
+                    return (
+                      <li key={(ed.editionKey || i) + String(isbnText)} style={{ border: '1px solid #eee', borderRadius: 8, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                          {ed.coverUrl ? <img src={ed.coverUrl} alt="" width={30} height={44} style={{ objectFit: 'cover', borderRadius: 4 }} /> : <div style={{ width: 30, height: 44, background: '#f3f4f6', borderRadius: 4 }} />}
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ed.title || title}</div>
+                            <div style={{ color: '#555', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pubs || 'Éditeur inconnu'}{ed.publishDate ? ` — ${ed.publishDate}` : ''}</div>
+                            <div style={{ color: '#111', fontSize: 12 }}>{isbnText}</div>
+                          </div>
+                        </div>
+                        <button type="button" onMouseDown={(e) => { e.preventDefault(); setIsbn((is13 || is10 || '')); setShowEditionPicker(false); }} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #10b981', background: '#10b981', color: 'white' }}>Sélectionner</button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           )}
         </div>
         <form

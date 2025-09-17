@@ -188,6 +188,7 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const out = docs.map((doc: any) => {
           const isbn13 = Array.isArray(doc.isbn) ? doc.isbn.find((x: string) => /^\d{13}$/.test(x)) : undefined;
           const isbn10 = Array.isArray(doc.isbn) ? doc.isbn.find((x: string) => /^\d{10}$/.test(x)) : undefined;
+          const workKey = typeof doc.key === 'string' && doc.key.startsWith('/works/') ? (doc.key as string).slice('/works/'.length) : undefined;
           return {
             title: doc.title as string | undefined,
             authors: Array.isArray(doc.author_name) ? (doc.author_name as string[]) : undefined,
@@ -195,6 +196,7 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
             isbn10: isbn10 as string | undefined,
             coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : (isbn13 ? `https://covers.openlibrary.org/b/isbn/${isbn13}-M.jpg` : undefined),
             _editionKey: Array.isArray(doc.edition_key) ? doc.edition_key[0] : undefined,
+            workKey,
             source: 'openlibrary' as const,
           };
         });
@@ -218,6 +220,42 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         return sendJSON(res, 200, { results: finalOut });
       } catch (e: any) {
         return sendJSON(res, 500, { error: 'search_failed', message: e?.message || String(e) });
+      }
+    })();
+    return;
+  }
+
+  // Editions listing for a work: /api/books/editions?work=OL82563W&limit=30
+  if (method === 'GET' && url.pathname === '/api/books/editions') {
+    (async () => {
+      try {
+        const work = (url.searchParams.get('work') || '').trim();
+        const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '20', 10) || 20, 1), 50);
+        if (!work) return sendJSON(res, 400, { error: 'missing_work' });
+        const data: any = await fetchJsonPolite(`https://openlibrary.org/works/${encodeURIComponent(work)}/editions.json?limit=${limit}`);
+        const arr: any[] = Array.isArray(data.entries) ? data.entries : [];
+        const results = arr.map((ed: any) => {
+          const isbn13 = Array.isArray(ed.isbn_13) ? ed.isbn_13 : undefined;
+          const isbn10 = Array.isArray(ed.isbn_10) ? ed.isbn_10 : undefined;
+          const publishers = Array.isArray(ed.publishers) ? ed.publishers : undefined;
+          const editionKey = typeof ed.key === 'string' && ed.key.startsWith('/books/') ? ed.key.slice('/books/'.length) : undefined;
+          const coverUrl = ed.covers && ed.covers[0]
+            ? `https://covers.openlibrary.org/b/id/${ed.covers[0]}-M.jpg`
+            : (isbn13 && isbn13[0] ? `https://covers.openlibrary.org/b/isbn/${isbn13[0]}-M.jpg` : undefined);
+          return {
+            editionKey,
+            title: ed.title as string | undefined,
+            publishers: publishers as string[] | undefined,
+            publishDate: ed.publish_date as string | undefined,
+            pages: typeof ed.number_of_pages === 'number' ? ed.number_of_pages : undefined,
+            isbn13: isbn13 as string[] | undefined,
+            isbn10: isbn10 as string[] | undefined,
+            coverUrl,
+          };
+        });
+        return sendJSON(res, 200, { results });
+      } catch (e: any) {
+        return sendJSON(res, 500, { error: 'editions_failed', message: e?.message || String(e) });
       }
     })();
     return;
