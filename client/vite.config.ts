@@ -11,6 +11,7 @@ export default defineConfig({
       // Proxy backend routes to Node server during dev
       '/health': 'http://localhost:3000',
       '/api': 'http://localhost:3000',
+      '/covers': 'http://localhost:3000',
     },
   },
   build: {

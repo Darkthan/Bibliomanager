@@ -698,7 +698,7 @@ export function App() {
                   <div role="option" aria-selected={idx === addHighlightIndex} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 10px', borderRadius: 8, background: idx === addHighlightIndex ? '#EFF6FF' : 'transparent' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
                       { (s.isbn13 || s.isbn10) ? (
-                        <img src={} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
+                        <img src={`/covers/isbn/${String(s.isbn13 || s.isbn10)}?s=S`} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
                       ) : (
                         s.coverUrl ? <img src={s.coverUrl} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} /> : <div style={{ width: 36, height: 54, background: '#f3f4f6', borderRadius: 4 }} />
                       )}
@@ -878,7 +878,13 @@ export function App() {
                   borderRadius: 8,
                 }}
               >
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+                  {b.isbn || b.coverUrl ? (
+                    <img src={b.isbn ? `/covers/isbn/${b.isbn}?s=S` : (b.coverUrl as string)} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
+                  ) : (
+                    <div style={{ width: 36, height: 54, background: '#f3f4f6', borderRadius: 4 }} />
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <input
                       type="checkbox"
@@ -933,6 +939,7 @@ export function App() {
                       )}
                     </div>
                   )}
+                  </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginLeft: 12 }}>
                   {editingBookId === b.id ? (
