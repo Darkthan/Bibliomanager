@@ -127,7 +127,7 @@ export function App() {
   function addBook() {
     if (isAddDisabled) return;
     const cleanIsbn = isbn.replace(/[^0-9Xx]/g, '').toUpperCase();
-    const coverUrl = cleanIsbn ? `https://covers.openlibrary.org/b/isbn/${cleanIsbn}-M.jpg` : undefined;
+    const coverUrl = cleanIsbn ? `/covers/isbn/${cleanIsbn}?s=M` : undefined;
     setBooks((prev) => [
       {
         id: Date.now(),
@@ -159,7 +159,7 @@ export function App() {
         if (Object.prototype.hasOwnProperty.call(patch, 'isbn')) {
           const clean = (patch.isbn || '').replace(/[^0-9Xx]/g, '').toUpperCase();
           next.isbn = clean || undefined;
-          next.coverUrl = clean ? `https://covers.openlibrary.org/b/isbn/${clean}-M.jpg` : next.coverUrl;
+          next.coverUrl = clean ? `/covers/isbn/${clean}?s=M` : next.coverUrl;
         }
         return next;
       }),
@@ -347,7 +347,7 @@ export function App() {
         createdAt: Date.now(),
         isbn: cleanIsbn || undefined,
         barcode: cleanBarcode || undefined,
-        coverUrl: cleanIsbn ? `https://covers.openlibrary.org/b/isbn/${cleanIsbn}-M.jpg` : undefined,
+        coverUrl: cleanIsbn ? `/covers/isbn/${cleanIsbn}?s=M` : undefined,
       },
       ...prev,
     ]);
@@ -697,7 +697,11 @@ export function App() {
                 <li key={s.title + (s.isbn13 || s.isbn10 || idx)}>
                   <div role="option" aria-selected={idx === addHighlightIndex} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 10px', borderRadius: 8, background: idx === addHighlightIndex ? '#EFF6FF' : 'transparent' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                      {s.coverUrl ? <img src={s.coverUrl} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} /> : <div style={{ width: 36, height: 54, background: '#f3f4f6', borderRadius: 4 }} />}
+                      { (s.isbn13 || s.isbn10) ? (
+                        <img src={} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
+                      ) : (
+                        s.coverUrl ? <img src={s.coverUrl} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} /> : <div style={{ width: 36, height: 54, background: '#f3f4f6', borderRadius: 4 }} />
+                      )}
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{highlight(s.title, addQuery)}</div>
                         <div style={{ color: '#666', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(s.authors && s.authors[0]) || ''}</div>
@@ -731,7 +735,13 @@ export function App() {
                     return (
                       <li key={(ed.editionKey || i) + String(isbnText)} style={{ border: '1px solid #eee', borderRadius: 8, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                          {ed.coverUrl ? <img src={ed.coverUrl} alt="" width={30} height={44} style={{ objectFit: 'cover', borderRadius: 4 }} /> : <div style={{ width: 30, height: 44, background: '#f3f4f6', borderRadius: 4 }} />}
+                          {is13 ? (
+                            <img src={} alt="" width={30} height={44} style={{ objectFit: 'cover', borderRadius: 4 }} />
+                          ) : ed.coverUrl ? (
+                            <img src={ed.coverUrl} alt="" width={30} height={44} style={{ objectFit: 'cover', borderRadius: 4 }} />
+                          ) : (
+                            <div style={{ width: 30, height: 44, background: '#f3f4f6', borderRadius: 4 }} />
+                          )}
                           <div style={{ minWidth: 0 }}>
                             <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ed.title || title}</div>
                             <div style={{ color: '#555', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pubs || 'Éditeur inconnu'}{ed.publishDate ? ` — ${ed.publishDate}` : ''}</div>

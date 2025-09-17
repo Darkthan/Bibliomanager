@@ -1,6 +1,7 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
+import { mkdir, writeFile, stat as fsStat } from 'node:fs/promises';
 
 // Simple in-memory cache + polite rate limiting for Open Library
 const OPENLIB_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -289,6 +290,43 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       return createReadStream(indexPath).pipe(res);
     }
+  }
+
+  // Dynamic cover caching: /covers/isbn/:isbn?s=M|S|L
+  if (method === 'GET' && url.pathname.startsWith('/covers/isbn/')) {
+    (async () => {
+      try {
+        const parts = url.pathname.split('/');
+        const raw = parts[parts.length - 1] || '';
+        const isbn = raw.replace(/[^0-9Xx]/g, '').toUpperCase();
+        if (!isbn || isbn.length < 10) return sendText(res, 400, 'bad isbn');
+        const size = (url.searchParams.get('s') || 'M').toUpperCase();
+        const s = size === 'S' || size === 'L' ? size : 'M';
+        const cacheDir = join(process.cwd(), 'cache', 'covers');
+        const filePath = join(cacheDir, `${isbn}-${s}.jpg`);
+        try {
+          const st = await fsStat(filePath);
+          if (st && st.isFile()) {
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'image/jpeg');
+            return createReadStream(filePath).pipe(res);
+          }
+        } catch {}
+        await mkdir(cacheDir, { recursive: true });
+        const remote = `https://covers.openlibrary.org/b/isbn/${encodeURIComponent(isbn)}-${s}.jpg?default=false`;
+        const r = await fetch(remote, { headers: { 'User-Agent': OPENLIB_UA } as any });
+        if (!r.ok) return sendText(res, 404, 'not found');
+        const buf = Buffer.from(await r.arrayBuffer());
+        await writeFile(filePath, buf);
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Content-Length', String(buf.length));
+        return res.end(buf);
+      } catch (e: any) {
+        return sendText(res, 500, 'cover error');
+      }
+    })();
+    return;
   }
 
   // Default route
