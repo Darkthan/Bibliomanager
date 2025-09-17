@@ -736,7 +736,7 @@ export function App() {
                       <li key={(ed.editionKey || i) + String(isbnText)} style={{ border: '1px solid #eee', borderRadius: 8, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                           {is13 ? (
-                            <img src={} alt="" width={30} height={44} style={{ objectFit: 'cover', borderRadius: 4 }} />
+                            <img src={`/covers/isbn/${String(is13)}?s=S`} alt="" width={30} height={44} style={{ objectFit: 'cover', borderRadius: 4 }} />
                           ) : ed.coverUrl ? (
                             <img src={ed.coverUrl} alt="" width={30} height={44} style={{ objectFit: 'cover', borderRadius: 4 }} />
                           ) : (
