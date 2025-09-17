@@ -149,21 +149,34 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const r = await fetch(`https://openlibrary.org/search.json?${params.toString()}`, { headers: { Accept: 'application/json' } });
         if (!r.ok) throw new Error(String(r.status));
         const data: any = await r.json();
-        const out = Array.isArray(data.docs)
-          ? data.docs.slice(0, 5).map((doc: any) => {
-              const isbn13 = Array.isArray(doc.isbn) ? doc.isbn.find((x: string) => /^\d{13}$/.test(x)) : undefined;
-              const isbn10 = Array.isArray(doc.isbn) ? doc.isbn.find((x: string) => /^\d{10}$/.test(x)) : undefined;
-              return {
-                title: doc.title,
-                authors: Array.isArray(doc.author_name) ? doc.author_name : undefined,
-                isbn13,
-                isbn10,
-                coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : (isbn13 ? `https://covers.openlibrary.org/b/isbn/${isbn13}-M.jpg` : undefined),
-                source: 'openlibrary' as const,
-              };
-            })
-          : [];
-        return sendJSON(res, 200, { results: out });
+        const docs: any[] = Array.isArray(data.docs) ? data.docs.slice(0, 5) : [];
+        const out = docs.map((doc: any) => {
+          const isbn13 = Array.isArray(doc.isbn) ? doc.isbn.find((x: string) => /^\d{13}$/.test(x)) : undefined;
+          const isbn10 = Array.isArray(doc.isbn) ? doc.isbn.find((x: string) => /^\d{10}$/.test(x)) : undefined;
+          return {
+            title: doc.title as string | undefined,
+            authors: Array.isArray(doc.author_name) ? (doc.author_name as string[]) : undefined,
+            isbn13: isbn13 as string | undefined,
+            isbn10: isbn10 as string | undefined,
+            coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : (isbn13 ? `https://covers.openlibrary.org/b/isbn/${isbn13}-M.jpg` : undefined),
+            _editionKey: Array.isArray(doc.edition_key) ? doc.edition_key[0] : undefined,
+            source: 'openlibrary' as const,
+          };
+        });
+        await Promise.allSettled(out.map(async (item, idx) => {
+          if ((item.isbn13 || item.isbn10) || !docs[idx] || !item._editionKey) return;
+          try {
+            const ed = await fetch(`https://openlibrary.org/books/${encodeURIComponent(item._editionKey as string)}.json`, { headers: { Accept: 'application/json' } });
+            if (!ed.ok) return;
+            const edData: any = await ed.json();
+            if (Array.isArray(edData.isbn_13) && edData.isbn_13[0]) item.isbn13 = String(edData.isbn_13[0]);
+            if (!item.isbn13 && Array.isArray(edData.isbn_10) && edData.isbn_10[0]) item.isbn10 = String(edData.isbn_10[0]);
+            if (!item.coverUrl && item.isbn13) item.coverUrl = `https://covers.openlibrary.org/b/isbn/${item.isbn13}-M.jpg`;
+          } catch {
+          }
+        }));
+        const finalOut = out.map(({ _editionKey, ...rest }) => rest);
+        return sendJSON(res, 200, { results: finalOut });
       } catch (e: any) {
         return sendJSON(res, 500, { error: 'search_failed', message: e?.message || String(e) });
       }
