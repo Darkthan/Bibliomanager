@@ -2,6 +2,49 @@ import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 
+// Simple in-memory cache + polite rate limiting for Open Library
+const OPENLIB_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const OPENLIB_MIN_INTERVAL_MS = 1000; // ~1 req/sec
+const OPENLIB_UA = 'Bibliomanager2/0.0.3 (+https://example.invalid)';
+const cache = new Map<string, { expires: number; data: any }>();
+const inflight = new Map<string, Promise<any>>();
+let rateChain: Promise<void> = Promise.resolve();
+let lastFetchAt = 0;
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function rateLimit(): Promise<void> {
+  // Chain sequentially to avoid concurrent bursts
+  rateChain = rateChain.then(async () => {
+    const now = Date.now();
+    const wait = Math.max(0, OPENLIB_MIN_INTERVAL_MS - (now - lastFetchAt));
+    if (wait > 0) await sleep(wait);
+    lastFetchAt = Date.now();
+  });
+  return rateChain;
+}
+
+async function fetchJsonPolite(url: string): Promise<any> {
+  const now = Date.now();
+  const cached = cache.get(url);
+  if (cached && cached.expires > now) return cached.data;
+  const existing = inflight.get(url);
+  if (existing) return existing;
+  const p = (async () => {
+    await rateLimit();
+    const r = await fetch(url, { headers: { Accept: 'application/json', 'User-Agent': OPENLIB_UA } as any });
+    if (!r.ok) throw new Error(String(r.status));
+    const data = await r.json();
+    cache.set(url, { expires: Date.now() + OPENLIB_TTL_MS, data });
+    return data;
+  })()
+    .finally(() => inflight.delete(url));
+  inflight.set(url, p);
+  return p;
+}
+
 function sendJSON(res: ServerResponse, status: number, body: unknown) {
   const json = JSON.stringify(body);
   res.statusCode = status;
@@ -45,12 +88,6 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
           return '';
         }
 
-        async function fetchJson(u: string) {
-          const r = await fetch(u, { headers: { 'Accept': 'application/json' } });
-          if (!r.ok) throw new Error(String(r.status));
-          return r.json();
-        }
-
         type LookupResult = {
           title?: string;
           authors?: string[];
@@ -70,7 +107,7 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         if (isbn) {
           // Try OpenLibrary ISBN endpoint
           try {
-            const data: any = await fetchJson(`https://openlibrary.org/isbn/${encodeURIComponent(isbn)}.json`);
+            const data: any = await fetchJsonPolite(`https://openlibrary.org/isbn/${encodeURIComponent(isbn)}.json`);
             result = {
               title: data.title,
               authors: Array.isArray(data.authors)
@@ -79,7 +116,7 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
                     for (const a of data.authors) {
                       if (a && a.key) {
                         try {
-                          const ad = await fetchJson(`https://openlibrary.org${a.key}.json`);
+                          const ad = await fetchJsonPolite(`https://openlibrary.org${a.key}.json`);
                           if (ad && ad.name) names.push(ad.name);
                         } catch {
                           // ignore
@@ -109,7 +146,7 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
           if (author) params.push(`author=${encodeURIComponent(author)}`);
           params.push('limit=1');
           const urlSearch = `https://openlibrary.org/search.json?${params.join('&')}`;
-          const data: any = await fetchJson(urlSearch);
+          const data: any = await fetchJsonPolite(urlSearch);
           const doc = data?.docs?.[0];
           if (doc) {
             const docIsbn: string | undefined = Array.isArray(doc.isbn) ? doc.isbn.find((x: string) => x && x.length >= 10) : undefined;
@@ -146,9 +183,7 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         else params.set('q', q);
         params.set('limit', '5');
 
-        const r = await fetch(`https://openlibrary.org/search.json?${params.toString()}`, { headers: { Accept: 'application/json' } });
-        if (!r.ok) throw new Error(String(r.status));
-        const data: any = await r.json();
+        const data: any = await fetchJsonPolite(`https://openlibrary.org/search.json?${params.toString()}`);
         const docs: any[] = Array.isArray(data.docs) ? data.docs.slice(0, 5) : [];
         const out = docs.map((doc: any) => {
           const isbn13 = Array.isArray(doc.isbn) ? doc.isbn.find((x: string) => /^\d{13}$/.test(x)) : undefined;
@@ -163,18 +198,22 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
             source: 'openlibrary' as const,
           };
         });
-        await Promise.allSettled(out.map(async (item, idx) => {
-          if ((item.isbn13 || item.isbn10) || !docs[idx] || !item._editionKey) return;
+        // Enrich up to 3 items missing ISBN by fetching their first edition details
+        let enriched = 0;
+        for (let idx = 0; idx < out.length; idx++) {
+          const item = out[idx] as any;
+          if (enriched >= 3) break;
+          if ((item.isbn13 || item.isbn10) || !docs[idx] || !item._editionKey) continue;
           try {
-            const ed = await fetch(`https://openlibrary.org/books/${encodeURIComponent(item._editionKey as string)}.json`, { headers: { Accept: 'application/json' } });
-            if (!ed.ok) return;
-            const edData: any = await ed.json();
+            const edData: any = await fetchJsonPolite(`https://openlibrary.org/books/${encodeURIComponent(item._editionKey as string)}.json`);
             if (Array.isArray(edData.isbn_13) && edData.isbn_13[0]) item.isbn13 = String(edData.isbn_13[0]);
             if (!item.isbn13 && Array.isArray(edData.isbn_10) && edData.isbn_10[0]) item.isbn10 = String(edData.isbn_10[0]);
             if (!item.coverUrl && item.isbn13) item.coverUrl = `https://covers.openlibrary.org/b/isbn/${item.isbn13}-M.jpg`;
+            enriched++;
           } catch {
+            // ignore
           }
-        }));
+        }
         const finalOut = out.map(({ _editionKey, ...rest }) => rest);
         return sendJSON(res, 200, { results: finalOut });
       } catch (e: any) {
