@@ -342,7 +342,7 @@ export function App() {
     const t = s.title || '';
     const a = Array.isArray(s.authors) && s.authors[0] ? s.authors[0] : '';
     let i = s.isbn13 || s.isbn10 || '';
-    // Si pas d'ISBN fourni par la suggestion, tenter un lookup ciblé
+    // Si pas d'ISBN fourni par la suggestion, tenter un lookup ciblé puis seulement pré-remplir
     if (!i && t) {
       try {
         const params = new URLSearchParams();
@@ -357,8 +357,12 @@ export function App() {
         // ignore si lookup échoue
       }
     }
+    // Pré-remplir le petit formulaire, laisser l'utilisateur valider avec le bouton Ajouter
+    setTitle(t);
+    setAuthor(a);
+    setIsbn(i);
     setShowAddSuggestions(false);
-    addBookDirect(t, a, i, '');
+    setAddQuery('');
   }
 
   async function lookupBookInfo() {
