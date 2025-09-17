@@ -414,17 +414,117 @@ export function App() {
         </span>
       </header>
 
-      <nav style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <a href="/livres/disponibles" onClick={(e) => { e.preventDefault(); navigate('/livres/disponibles'); }} style={{ padding: '8px 10px', border: '1px solid #ddd', borderRadius: 6 }}>
-          Livres disponibles
-        </a>
-        <a href="/livres/nouveau" onClick={(e) => { e.preventDefault(); navigate('/livres/nouveau'); }} style={{ padding: '8px 10px', border: '1px solid #ddd', borderRadius: 6 }}>
-          Ajouter un livre
-        </a>
-        <a href="/prets" onClick={(e) => { e.preventDefault(); navigate('/prets'); }} style={{ padding: '8px 10px', border: '1px solid #ddd', borderRadius: 6 }}>
-          Prêts
-        </a>
-      </nav>
+      {route !== '/' && (
+        <nav aria-label="Navigation principale" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          {[
+            { to: '/livres/disponibles', label: 'Livres disponibles' },
+            { to: '/livres/nouveau', label: 'Ajouter un livre' },
+            { to: '/prets', label: 'Prêts' },
+          ].map((item) => (
+            <a
+              key={item.to}
+              href={item.to}
+              onClick={(e) => { e.preventDefault(); navigate(item.to); }}
+              style={{
+                padding: '12px 16px',
+                border: '2px solid ' + (route === item.to ? '#2563eb' : '#ddd'),
+                background: route === item.to ? '#EFF6FF' : '#fff',
+                color: '#111',
+                borderRadius: 10,
+                minWidth: 160,
+                textAlign: 'center',
+                fontSize: 16,
+              }}
+            >
+              {item.label}
+            </a>
+          ))}
+        </nav>
+      )}
+
+      {route === '/' && (
+        <section style={{ padding: 8 }}>
+          <div
+            style={{
+              display: 'grid',
+              gap: 16,
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            }}
+          >
+            <button
+              onClick={() => navigate('/livres/disponibles')}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                padding: 20,
+                borderRadius: 16,
+                border: '2px solid #e5e7eb',
+                background: '#ffffff',
+                minHeight: 140,
+                textAlign: 'left',
+                fontSize: 18,
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ fontSize: 28 }}>📚</div>
+              <div>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Livres disponibles</div>
+                <div style={{ color: '#555', fontSize: 14 }}>Consulter et prêter rapidement</div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => navigate('/livres/nouveau')}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                padding: 20,
+                borderRadius: 16,
+                border: '2px solid #e5e7eb',
+                background: '#ffffff',
+                minHeight: 140,
+                textAlign: 'left',
+                fontSize: 18,
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ fontSize: 28 }}>➕</div>
+              <div>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Ajouter un livre</div>
+                <div style={{ color: '#555', fontSize: 14 }}>Saisie rapide avec ISBN/CB</div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => navigate('/prets')}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                padding: 20,
+                borderRadius: 16,
+                border: '2px solid #e5e7eb',
+                background: '#ffffff',
+                minHeight: 140,
+                textAlign: 'left',
+                fontSize: 18,
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ fontSize: 28 }}>📄</div>
+              <div>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Prêts</div>
+                <div style={{ color: '#555', fontSize: 14 }}>Créer et suivre les prêts</div>
+              </div>
+            </button>
+          </div>
+        </section>
+      )}
 
       {route === '/livres/nouveau' && (
       <section style={{ padding: 16, border: '1px solid #eee', borderRadius: 8 }}>
