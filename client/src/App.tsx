@@ -8,6 +8,7 @@ type Book = {
   createdAt: number;
   isbn?: string;
   barcode?: string;
+  coverUrl?: string;
 };
 
 type Loan = {
@@ -126,6 +127,7 @@ export function App() {
   function addBook() {
     if (isAddDisabled) return;
     const cleanIsbn = isbn.replace(/[^0-9Xx]/g, '').toUpperCase();
+    const coverUrl = cleanIsbn ? `https://covers.openlibrary.org/b/isbn/${cleanIsbn}-M.jpg` : undefined;
     setBooks((prev) => [
       {
         id: Date.now(),
@@ -135,6 +137,7 @@ export function App() {
         createdAt: Date.now(),
         isbn: cleanIsbn || undefined,
         barcode: barcode.trim() || undefined,
+        coverUrl,
       },
       ...prev,
     ]);
@@ -149,7 +152,18 @@ export function App() {
   }
 
   function saveBookEdit(id: number, patch: Partial<Book>) {
-    setBooks((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+    setBooks((prev) =>
+      prev.map((b) => {
+        if (b.id !== id) return b;
+        const next: Book = { ...b, ...patch };
+        if (Object.prototype.hasOwnProperty.call(patch, 'isbn')) {
+          const clean = (patch.isbn || '').replace(/[^0-9Xx]/g, '').toUpperCase();
+          next.isbn = clean || undefined;
+          next.coverUrl = clean ? `https://covers.openlibrary.org/b/isbn/${clean}-M.jpg` : next.coverUrl;
+        }
+        return next;
+      }),
+    );
     setEditingBookId(null);
   }
 
@@ -333,6 +347,7 @@ export function App() {
         createdAt: Date.now(),
         isbn: cleanIsbn || undefined,
         barcode: cleanBarcode || undefined,
+        coverUrl: cleanIsbn ? `https://covers.openlibrary.org/b/isbn/${cleanIsbn}-M.jpg` : undefined,
       },
       ...prev,
     ]);
