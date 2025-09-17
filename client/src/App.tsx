@@ -330,8 +330,13 @@ export function App() {
       if (nIsbn) params.set('isbn', nIsbn);
       else if (barcode) params.set('barcode', barcode);
       else if (title || author) {
-        if (title) params.set('title', title);
-        if (author) params.set('author', author);
+        // Pour les recherches par titre/auteur, proposer 5 résultats au choix
+        const q = `${title || ''} ${author || ''}`.trim();
+        if (q.length >= 3) {
+          setAddQuery(q);
+          setShowAddSuggestions(true);
+          return; // ne pas choisir automatiquement un résultat
+        }
       } else {
         throw new Error("Renseignez un ISBN, un code-barres ou un titre/auteur");
       }
