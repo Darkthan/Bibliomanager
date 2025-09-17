@@ -304,9 +304,10 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const s = size === 'S' || size === 'L' ? size : 'M';
         const cacheDir = join(process.cwd(), 'cache', 'covers');
         const filePath = join(cacheDir, `${isbn}-${s}.jpg`);
+        const force = url.searchParams.get('force') === '1';
         try {
           const st = await fsStat(filePath);
-          if (st && st.isFile()) {
+          if (!force && st && st.isFile()) {
             res.statusCode = 200;
             res.setHeader('Content-Type', 'image/jpeg');
             return createReadStream(filePath).pipe(res);
