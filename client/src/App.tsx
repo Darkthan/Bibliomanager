@@ -743,7 +743,6 @@ export function App() {
         )}
       </section>
       )}
-      )}
 
       {route === '/livres/disponibles' && (
       <section style={{ padding: 16, border: '1px solid #eee', borderRadius: 8 }}>
