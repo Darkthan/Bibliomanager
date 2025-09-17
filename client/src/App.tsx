@@ -43,6 +43,12 @@ export function App() {
   const [editingBookId, setEditingBookId] = useState<number | null>(null);
   const [loanListQuery, setLoanListQuery] = useState('');
   const [route, setRoute] = useState('/livres/disponibles');
+  // Suggestions pour l'ajout (base ouverte)
+  const [addQuery, setAddQuery] = useState('');
+  const [showAddSuggestions, setShowAddSuggestions] = useState(false);
+  const [addSuggestions, setAddSuggestions] = useState<Array<{ title: string; authors?: string[]; isbn13?: string; isbn10?: string; coverUrl?: string }>>([]);
+  const [addHighlightIndex, setAddHighlightIndex] = useState(-1);
+  const [addLoading, setAddLoading] = useState(false);
   useEffect(() => {
     const sync = () => setRoute(window.location.pathname || '/');
     window.addEventListener('popstate', sync);
@@ -271,33 +277,70 @@ export function App() {
     return "Longueur d'ISBN attendue: 10 ou 13";
   }, [isbn]);
 
+  // Recherche suggestions pour l'ajout
+  useEffect(() => {
+    if (!showAddSuggestions) return;
+    const q = addQuery.trim();
+    if (q.length < 3) {
+      setAddSuggestions([]);
+      setAddHighlightIndex(-1);
+      return;
+    }
+    let active = true;
+    const t = setTimeout(async () => {
+      try {
+        setAddLoading(true);
+        const r = await fetch(`/api/books/search?q=${encodeURIComponent(q)}`);
+        if (!r.ok) throw new Error('Erreur recherche');
+        const data = (await r.json()) as any;
+        if (!active) return;
+        const list = Array.isArray(data.results) ? data.results : [];
+        setAddSuggestions(list);
+        setAddHighlightIndex(list.length > 0 ? 0 : -1);
+      } catch {
+        if (!active) return;
+        setAddSuggestions([]);
+        setAddHighlightIndex(-1);
+      } finally {
+        if (active) setAddLoading(false);
+      }
+    }, 200);
+    return () => { active = false; clearTimeout(t); };
+  }, [addQuery, showAddSuggestions]);
+
+  function addFromSuggestion(s: { title: string; authors?: string[]; isbn13?: string; isbn10?: string }) {
+    const authorName = Array.isArray(s.authors) && s.authors[0] ? s.authors[0] : '';
+    setTitle(s.title || '');
+    setAuthor(authorName);
+    setIsbn(s.isbn13 || s.isbn10 || '');
+    setShowAddSuggestions(false);
+    // Ajoute immédiatement si titre/auteur OK
+    const t = setTimeout(() => {
+      if ((s.title || '').trim() && authorName.trim()) addBook();
+      clearTimeout(t);
+    }, 0);
+  }
+
   async function lookupBookInfo() {
     setBookLookupError(null);
     setBookLookupLoading(true);
     try {
-      let queryIsbn = normalizeISBN(isbn);
-      if (!queryIsbn && barcode) queryIsbn = inferIsbnFromBarcode(barcode);
-      if (!queryIsbn) {
-        // fallback: try title+author search
-        const q = encodeURIComponent(`${title} ${author}`.trim());
-        if (!q) throw new Error('Renseignez un ISBN ou un titre/auteur');
-        const res = await fetch(`https://openlibrary.org/search.json?q=${q}&limit=1`);
-        if (!res.ok) throw new Error('Recherche impossible');
-        const data = (await res.json()) as any;
-        const doc = data?.docs?.[0];
-        if (!doc) throw new Error('Aucun résultat');
-        setTitle(doc.title || title);
-        if (!author && doc.author_name?.length) setAuthor(doc.author_name[0]);
+      const params = new URLSearchParams();
+      const nIsbn = normalizeISBN(isbn);
+      if (nIsbn) params.set('isbn', nIsbn);
+      else if (barcode) params.set('barcode', barcode);
+      else if (title || author) {
+        if (title) params.set('title', title);
+        if (author) params.set('author', author);
       } else {
-        const res = await fetch(`https://openlibrary.org/search.json?isbn=${queryIsbn}&limit=1`);
-        if (!res.ok) throw new Error('Recherche ISBN impossible');
-        const data = (await res.json()) as any;
-        const doc = data?.docs?.[0];
-        if (!doc) throw new Error('ISBN introuvable');
-        setTitle(doc.title || title);
-        if (doc.author_name?.length) setAuthor(doc.author_name[0]);
-        if (!isbn) setIsbn(queryIsbn);
+        throw new Error("Renseignez un ISBN, un code-barres ou un titre/auteur");
       }
+      const res = await fetch(`/api/books/lookup?${params.toString()}`);
+      if (!res.ok) throw new Error('Recherche impossible');
+      const data = (await res.json()) as any;
+      if (data.title) setTitle(data.title);
+      if (Array.isArray(data.authors) && data.authors[0]) setAuthor(data.authors[0]);
+      if (!isbn && data.isbn13) setIsbn(data.isbn13);
     } catch (e: any) {
       setBookLookupError(e?.message || 'Erreur de récupération');
     } finally {
@@ -529,6 +572,46 @@ export function App() {
       {route === '/livres/nouveau' && (
       <section style={{ padding: 16, border: '1px solid #eee', borderRadius: 8 }}>
         <h2 style={{ marginTop: 0 }}>Ajouter un livre</h2>
+        <div style={{ marginBottom: 12, position: 'relative' }}>
+          <input
+            aria-label="Rechercher un livre (ISBN, code-barres, titre, auteur)"
+            placeholder="Rechercher un livre dans la base ouverte…"
+            value={addQuery}
+            onFocus={() => setShowAddSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowAddSuggestions(false), 100)}
+            onChange={(e) => { setAddQuery(e.target.value); setShowAddSuggestions(true); }}
+            onKeyDown={(e) => {
+              if (!showAddSuggestions && addSuggestions.length > 0) setShowAddSuggestions(true);
+              if (addSuggestions.length === 0) return;
+              if (e.key === 'ArrowDown') { e.preventDefault(); setAddHighlightIndex((i) => (i + 1) % addSuggestions.length); }
+              else if (e.key === 'ArrowUp') { e.preventDefault(); setAddHighlightIndex((i) => (i - 1 + addSuggestions.length) % addSuggestions.length); }
+              else if (e.key === 'Enter') { if (addHighlightIndex >= 0) { e.preventDefault(); addFromSuggestion(addSuggestions[addHighlightIndex]); } }
+              else if (e.key === 'Escape') { setShowAddSuggestions(false); }
+            }}
+            style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid #ddd', fontSize: 16 }}
+          />
+          {showAddSuggestions && addQuery.trim() !== '' && (
+            <ul role="listbox" style={{ position: 'absolute', zIndex: 10, top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #eee', borderRadius: 10, marginTop: 4, listStyle: 'none', padding: 6, maxHeight: 260, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}>
+              {addLoading && <li style={{ padding: '8px 10px', color: '#555' }}>Recherche…</li>}
+              {!addLoading && addSuggestions.length === 0 && <li style={{ padding: '8px 10px', color: '#555' }}>Aucun résultat</li>}
+              {addSuggestions.map((s, idx) => (
+                <li key={s.title + (s.isbn13 || s.isbn10 || idx)}>
+                  <div role="option" aria-selected={idx === addHighlightIndex} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 10px', borderRadius: 8, background: idx === addHighlightIndex ? '#EFF6FF' : 'transparent' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                      {s.coverUrl ? <img src={s.coverUrl} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} /> : <div style={{ width: 36, height: 54, background: '#f3f4f6', borderRadius: 4 }} />}
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{highlight(s.title, addQuery)}</div>
+                        <div style={{ color: '#666', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(s.authors && s.authors[0]) || ''}</div>
+                        <div style={{ color: '#666', fontSize: 12 }}>{s.isbn13 || s.isbn10 || ''}</div>
+                      </div>
+                    </div>
+                    <button type="button" onMouseDown={(e) => { e.preventDefault(); addFromSuggestion(s); }} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #10b981', background: '#10b981', color: 'white' }}>Ajouter</button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         <form
           onSubmit={(e) => {
             e.preventDefault();
