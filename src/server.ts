@@ -144,13 +144,13 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const params = new URLSearchParams();
         if (isIsbn) params.set('isbn', q.replace(/[^0-9Xx]/g, ''));
         else params.set('q', q);
-        params.set('limit', '6');
+        params.set('limit', '5');
 
         const r = await fetch(`https://openlibrary.org/search.json?${params.toString()}`, { headers: { Accept: 'application/json' } });
         if (!r.ok) throw new Error(String(r.status));
         const data: any = await r.json();
         const out = Array.isArray(data.docs)
-          ? data.docs.slice(0, 6).map((doc: any) => {
+          ? data.docs.slice(0, 5).map((doc: any) => {
               const isbn13 = Array.isArray(doc.isbn) ? doc.isbn.find((x: string) => /^\d{13}$/.test(x)) : undefined;
               const isbn10 = Array.isArray(doc.isbn) ? doc.isbn.find((x: string) => /^\d{10}$/.test(x)) : undefined;
               return {
