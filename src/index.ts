@@ -1,4 +1,4 @@
-import { startServer } from './server';
+import { startServer } from './server.js';
 
 export function hello(name: string) {
   return `Hello, ${name}!`;

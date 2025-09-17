@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startServer } from '../src/server';
 import type { AddressInfo } from 'node:net';
+import http from 'node:http';
 
 let baseURL = '';
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -17,17 +18,32 @@ afterAll(async () => {
 
 describe('HTTP server', () => {
   it('responds on /health with status ok', async () => {
-    const res = await fetch(`${baseURL}/health`);
-    expect(res.ok).toBe(true);
-    const json = await res.json();
+    const json = await new Promise<any>((resolve, reject) => {
+      http.get(`${baseURL}/health`, (res) => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(data));
+          } catch (e) {
+            reject(e);
+          }
+        });
+      }).on('error', reject);
+    });
     expect(json).toEqual({ status: 'ok' });
   });
 
   it('serves root with default text', async () => {
-    const res = await fetch(`${baseURL}/`);
-    expect(res.ok).toBe(true);
-    const text = await res.text();
+    const text = await new Promise<string>((resolve, reject) => {
+      http.get(`${baseURL}/`, (res) => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => resolve(data));
+      }).on('error', reject);
+    });
     expect(text).toContain('Bibliomanager2');
   });
 });
-

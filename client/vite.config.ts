@@ -8,8 +8,8 @@ export default defineConfig({
     port: 5173,
     strictPort: false,
     proxy: {
-      // Proxy API calls to backend during dev if needed
-      // '/api': 'http://localhost:3000',
+      // Proxy backend routes to Node server during dev
+      '/health': 'http://localhost:3000',
     },
   },
   build: {
@@ -17,4 +17,3 @@ export default defineConfig({
     emptyOutDir: true,
   },
 });
-
