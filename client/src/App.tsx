@@ -269,6 +269,14 @@ export function App() {
     return '';
   }
 
+  // Auto-renseigner ISBN à partir du code-barres si possible
+  useEffect(() => {
+    if (!isbn && barcode) {
+      const inferred = inferIsbnFromBarcode(barcode);
+      if (inferred) setIsbn(inferred);
+    }
+  }, [barcode]);
+
   const isbnValidityHint = useMemo(() => {
     const n = normalizeISBN(isbn);
     if (!n) return null;
@@ -308,17 +316,49 @@ export function App() {
     return () => { active = false; clearTimeout(t); };
   }, [addQuery, showAddSuggestions]);
 
-  function addFromSuggestion(s: { title: string; authors?: string[]; isbn13?: string; isbn10?: string }) {
-    const authorName = Array.isArray(s.authors) && s.authors[0] ? s.authors[0] : '';
-    setTitle(s.title || '');
-    setAuthor(authorName);
-    setIsbn(s.isbn13 || s.isbn10 || '');
+  function addBookDirect(t: string, a: string, isbnVal?: string, barcodeVal?: string) {
+    if (t.trim().length === 0 || a.trim().length === 0) return;
+    const cleanIsbn = (isbnVal || '').replace(/[^0-9Xx]/g, '').toUpperCase();
+    const cleanBarcode = (barcodeVal || '').trim();
+    setBooks((prev) => [
+      {
+        id: Date.now(),
+        title: t.trim(),
+        author: a.trim(),
+        read: false,
+        createdAt: Date.now(),
+        isbn: cleanIsbn || undefined,
+        barcode: cleanBarcode || undefined,
+      },
+      ...prev,
+    ]);
+    setTitle('');
+    setAuthor('');
+    setIsbn('');
+    setBarcode('');
+  }
+
+  async function addFromSuggestion(s: { title: string; authors?: string[]; isbn13?: string; isbn10?: string }) {
+    const t = s.title || '';
+    const a = Array.isArray(s.authors) && s.authors[0] ? s.authors[0] : '';
+    let i = s.isbn13 || s.isbn10 || '';
+    // Si pas d'ISBN fourni par la suggestion, tenter un lookup ciblé
+    if (!i && t) {
+      try {
+        const params = new URLSearchParams();
+        params.set('title', t);
+        if (a) params.set('author', a);
+        const r = await fetch(`/api/books/lookup?${params.toString()}`);
+        if (r.ok) {
+          const d = (await r.json()) as any;
+          i = d.isbn13 || d.isbn10 || '';
+        }
+      } catch {
+        // ignore si lookup échoue
+      }
+    }
     setShowAddSuggestions(false);
-    // Ajoute immédiatement si titre/auteur OK
-    const t = setTimeout(() => {
-      if ((s.title || '').trim() && authorName.trim()) addBook();
-      clearTimeout(t);
-    }, 0);
+    addBookDirect(t, a, i, '');
   }
 
   async function lookupBookInfo() {
