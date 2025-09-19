@@ -2,11 +2,13 @@ import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { mkdir, writeFile, stat as fsStat } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
+import net from 'node:net';
 
 // Simple in-memory cache + polite rate limiting for Open Library
 const OPENLIB_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const OPENLIB_MIN_INTERVAL_MS = 1000; // ~1 req/sec
-const OPENLIB_UA = 'Bibliomanager2/0.0.3 (+https://example.invalid)';
+const OPENLIB_UA = 'Bibliomanager2/0.0.6 (+https://example.invalid)';
 const cache = new Map<string, { expires: number; data: any }>();
 const inflight = new Map<string, Promise<any>>();
 let rateChain: Promise<void> = Promise.resolve();
@@ -67,6 +69,127 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
 
   if (method === 'GET' && url.pathname === '/health') {
     return sendJSON(res, 200, { status: 'ok' });
+  }
+
+  // Simple JSON storage for app state (books + loans)
+  const dataDir = join(process.cwd(), 'data');
+  const dbPath = join(dataDir, 'db.json');
+
+  async function readState(): Promise<{ books: any[]; loans: any[] }> {
+    try {
+      const buf = await readFile(dbPath);
+      const parsed = JSON.parse(buf.toString('utf-8')) as any;
+      const books = Array.isArray(parsed?.books) ? parsed.books : [];
+      const loans = Array.isArray(parsed?.loans) ? parsed.loans : [];
+      return { books, loans };
+    } catch {
+      return { books: [], loans: [] };
+    }
+  }
+  async function writeState(state: { books: any[]; loans: any[] }) {
+    await mkdir(dataDir, { recursive: true });
+    const payload = JSON.stringify({ books: state.books, loans: state.loans }, null, 2);
+    await writeFile(dbPath, payload);
+  }
+
+  // GET current state
+  if (method === 'GET' && url.pathname === '/api/state') {
+    (async () => {
+      try {
+        const state = await readState();
+        return sendJSON(res, 200, state);
+      } catch (e: any) {
+        return sendJSON(res, 500, { error: 'read_state_failed', message: e?.message || String(e) });
+      }
+    })();
+    return;
+  }
+
+  // POST new state (replace)
+  if (method === 'POST' && url.pathname === '/api/state') {
+    (async () => {
+      try {
+        const chunks: Buffer[] = [];
+        let size = 0;
+        await new Promise<void>((resolve, reject) => {
+          req.on('data', (c) => {
+            chunks.push(c as Buffer);
+            size += (c as Buffer).length;
+            if (size > 1_000_000) { // 1MB limit
+              reject(new Error('payload_too_large'));
+              req.destroy();
+            }
+          });
+          req.on('end', resolve);
+          req.on('error', reject);
+        });
+        const raw = Buffer.concat(chunks).toString('utf-8');
+        const body = JSON.parse(raw || '{}');
+        const books = Array.isArray(body.books) ? body.books : [];
+        const loans = Array.isArray(body.loans) ? body.loans : [];
+        await writeState({ books, loans });
+        return sendJSON(res, 200, { ok: true });
+      } catch (e: any) {
+        return sendJSON(res, 400, { error: 'write_state_failed', message: e?.message || String(e) });
+      }
+    })();
+    return;
+  }
+
+  // ZPL print passthrough: POST /api/print/zpl { host, port?: 9100, zpl }
+  if (method === 'POST' && url.pathname === '/api/print/zpl') {
+    (async () => {
+      try {
+        const chunks: Buffer[] = [];
+        await new Promise<void>((resolve, reject) => {
+          req.on('data', (c) => chunks.push(c as Buffer));
+          req.on('end', resolve);
+          req.on('error', reject);
+        });
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
+        const host = String(body.host || '').trim();
+        const port = Number(body.port || 9100);
+        const zpl = String(body.zpl || '');
+        if (!host || !zpl) return sendJSON(res, 400, { error: 'missing_params' });
+        await new Promise<void>((resolve, reject) => {
+          const socket = net.createConnection({ host, port }, () => {
+            socket.write(zpl, 'utf8');
+            socket.end();
+          });
+          socket.setTimeout(7000);
+          socket.on('timeout', () => { socket.destroy(); reject(new Error('timeout')); });
+          socket.on('error', reject);
+          socket.on('close', () => resolve());
+        });
+        return sendJSON(res, 200, { ok: true });
+      } catch (e: any) {
+        return sendJSON(res, 500, { error: 'zpl_failed', message: e?.message || String(e) });
+      }
+    })();
+    return;
+  }
+
+  // Serve local agent (Windows PowerShell script)
+  if (method === 'GET' && url.pathname === '/agent/zebra-agent.ps1') {
+    const agentPath = join(process.cwd(), 'assets', 'zebra-agent.ps1');
+    if (existsSync(agentPath)) {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      return createReadStream(agentPath).pipe(res);
+    }
+    return sendText(res, 404, 'agent_missing');
+  }
+
+  // Serve local agent EXE if present
+  if (method === 'GET' && url.pathname === '/agent/zebra-agent.exe') {
+    const exePath = join(process.cwd(), 'assets', 'zebra-agent.exe');
+    if (existsSync(exePath)) {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', 'attachment; filename="zebra-agent.exe"');
+      return createReadStream(exePath).pipe(res);
+    }
+    return sendText(res, 404, 'agent_exe_missing');
   }
 
   // Open book data proxy: /api/books/lookup?isbn=&barcode=&title=&author=&q=
@@ -262,9 +385,14 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
-  // Serve static client build if present
+  // Serve static client build if present (but never intercept API or cover routes)
   const clientDir = join(process.cwd(), 'dist', 'client');
-  if (method === 'GET' && existsSync(clientDir)) {
+  if (
+    method === 'GET' &&
+    existsSync(clientDir) &&
+    !url.pathname.startsWith('/api/') &&
+    !url.pathname.startsWith('/covers/')
+  ) {
     const reqPath = url.pathname === '/' ? '/index.html' : url.pathname;
     // Prevent path traversal
     const safePath = normalize(reqPath).replace(/^\/+/, '');

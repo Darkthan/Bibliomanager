@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 type Book = {
   id: number;
+  epc: string; // EPC 96 bits hex (24 chars)
   title: string;
   author: string;
   read: boolean;
@@ -29,7 +30,7 @@ export function App() {
   const [barcode, setBarcode] = useState('');
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'read' | 'unread'>('all');
-  const [sortBy, setSortBy] = useState<'recent' | 'title' | 'author'>('recent');
+  const [sortBy, setSortBy] = useState<'recent' | 'title' | 'author' | 'addedAsc' | 'addedDesc'>('recent');
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loanBookId, setLoanBookId] = useState<number | ''>('');
   const [loanBookQuery, setLoanBookQuery] = useState('');
@@ -54,6 +55,258 @@ export function App() {
   const [editionOptions, setEditionOptions] = useState<Array<{ editionKey?: string; title?: string; publishers?: string[]; publishDate?: string; pages?: number; isbn13?: string[]; isbn10?: string[]; coverUrl?: string }>>([]);
   const [editionLoading, setEditionLoading] = useState(false);
   const [editionError, setEditionError] = useState<string | null>(null);
+  // Détails visuels pour la page "Livres disponibles"
+  const [selectedAvailableBook, setSelectedAvailableBook] = useState<Book | null>(null);
+  // Carte QR imprimable (page Ajouter un livre)
+  const [showCardFor, setShowCardFor] = useState<number | null>(null);
+  // Import en masse (codes-barres)
+  type ImportItem = { barcode: string; status: 'pending' | 'ok' | 'not_found' | 'error'; title?: string; author?: string; isbn?: string; coverUrl?: string; error?: string };
+  const [importMode, setImportMode] = useState<'camera' | 'lecteur' | 'csv'>('lecteur');
+  const [importItems, setImportItems] = useState<ImportItem[]>([]);
+  const [importInput, setImportInput] = useState('');
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  const streamRef = React.useRef<MediaStream | null>(null);
+  const detectorRef = React.useRef<any | null>(null);
+  const loopRef = React.useRef<number | null>(null);
+  const zxingReaderRef = React.useRef<any | null>(null);
+  const zxingControlsRef = React.useRef<any | null>(null);
+  const recentBarcodesRef = React.useRef<Map<string, number>>(new Map());
+  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState('');
+  const [loadingDevices, setLoadingDevices] = useState(false);
+  // Local agent detection (HTTP on 9110)
+  const [agentAvailable, setAgentAvailable] = useState(false);
+  const [agentPrinters, setAgentPrinters] = useState<Array<{ name: string; driver?: string; default?: boolean }>>([]);
+  const [agentPrinterName, setAgentPrinterName] = useState<string>('');
+  async function probeAgent() {
+    try {
+      const c = await Promise.race([
+        fetch('http://localhost:9110/health', { cache: 'no-store' }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 800)),
+      ]);
+      setAgentAvailable(!!(c as any)?.ok);
+    } catch { setAgentAvailable(false); }
+  }
+  useEffect(() => { probeAgent(); }, []);
+  useEffect(() => { try { const v = localStorage.getItem('bm2/agentPrinter'); if (v) setAgentPrinterName(v); } catch {} }, []);
+  useEffect(() => { try { localStorage.setItem('bm2/agentPrinter', agentPrinterName); } catch {} }, [agentPrinterName]);
+  useEffect(() => {
+    (async () => {
+      if (!agentAvailable) return;
+      async function fetchList(url: string) {
+        try { const r = await fetch(url, { cache: 'no-store', mode: 'cors' as const }); if (!r.ok) throw new Error(''); return await r.json(); } catch { return null; }
+      }
+      const data = (await fetchList('http://localhost:9110/printers')) || (await fetchList('http://127.0.0.1:9110/printers'));
+      if (data && Array.isArray(data.printers)) {
+        setAgentPrinters(data.printers);
+        if (!agentPrinterName && typeof data.default === 'string') setAgentPrinterName(data.default);
+      }
+    })();
+  }, [agentAvailable]);
+  // ZPL printer settings
+  const [printerHost, setPrinterHost] = useState<string>('');
+  const [printerPort, setPrinterPort] = useState<number>(9100);
+  const [printerDpi, setPrinterDpi] = useState<number>(203);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('bm2/printer');
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (p && typeof p.host === 'string') setPrinterHost(p.host);
+        if (p && typeof p.port === 'number') setPrinterPort(p.port);
+        if (p && typeof p.dpi === 'number') setPrinterDpi(p.dpi);
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem('bm2/printer', JSON.stringify({ host: printerHost, port: printerPort, dpi: printerDpi })); } catch {}
+  }, [printerHost, printerPort, printerDpi]);
+
+  function escZpl(text: string) { return (text || '').replace(/[\^~]/g, ' '); }
+  function buildZplLabel(b: Book, dpi: number) {
+    const dpmm = dpi / 25.4;
+    const w = Math.round(44 * dpmm);
+    const h = Math.round(19 * dpmm);
+    const margin = Math.round(1.5 * dpmm);
+    // QR un peu plus grand (~17mm), carré et centré
+    const qrSideMm = 17.0;
+    const approxQrDots = Math.round(qrSideMm * dpmm);
+    const mag = dpi >= 600 ? 3 : dpi >= 300 ? 4 : 5;
+    const title = escZpl(b.title);
+    const author = escZpl(b.author);
+    const xQr = margin;
+    const yQr = Math.max(0, Math.round((h - approxQrDots) / 2));
+    const xText = xQr + approxQrDots + Math.round(1.8 * dpmm);
+    const yTitle = margin;
+    // Tailles de police plus petites et multi-lignes possibles pour le titre
+    const titleDot = Math.max(9, Math.round(2.6 * dpmm)); // ≈2.6mm
+    const authorDot = Math.max(8, Math.round(2.2 * dpmm)); // ≈2.2mm
+    const lineGap = Math.max(1, Math.round(0.4 * dpmm));
+    const titleLinesMax = 2;
+    const textWidth = Math.max(20, w - xText - margin);
+    // Calcul d'un y pour l'auteur qui laisse la place à 2 lignes de titre
+    const yAuthor = yTitle + (titleDot * titleLinesMax) + (lineGap * (titleLinesMax - 1)) + Math.round(0.6 * dpmm);
+    return `^XA\n^CI28\n^PW${w}\n^LL${h}\n^LH0,0\n`
+      + `^RFW,H,2,6^FD${b.epc}^FS\n`
+      + `^FO${xQr},${yQr}\n^BQN,2,${mag}\n^FDLA,${b.epc}^FS\n`
+      + `^FO${xText},${yTitle}\n^A0N,${titleDot},${titleDot}^FB${textWidth},${titleLinesMax},${lineGap},L,0^FD${title}^FS\n`
+      + `^FO${xText},${yAuthor}\n^A0N,${authorDot},${authorDot}^FB${textWidth},1,0,L,0^FD${author}^FS\n`
+      + `^XZ`;
+  }
+
+  async function printZpl(b: Book) {
+    if (!printerHost) { alert('Configurer l\'adresse IP de l\'imprimante Zebra.'); return; }
+    const zpl = buildZplLabel(b, printerDpi);
+    try {
+      const r = await fetch('/api/print/zpl', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ host: printerHost, port: printerPort, zpl }) });
+      if (!r.ok) throw new Error('Envoi ZPL échoué');
+      alert('Étiquette envoyée à l\'imprimante.');
+    } catch (e: any) {
+      alert('Erreur impression ZPL: ' + (e?.message || 'inconnue'));
+    }
+  }
+
+  async function printViaLocalAgent(b: Book) {
+    const zpl = buildZplLabel(b, printerDpi);
+    const payload = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ zpl, printer: agentPrinterName || undefined }), mode: 'cors' as const };
+    try {
+      let r = await fetch('http://localhost:9110/print', payload);
+      if (!r.ok) { r = await fetch('http://127.0.0.1:9110/print', payload); }
+      if (!r.ok) throw new Error('Agent répond en erreur');
+      alert("Étiquette envoyée à l'agent local.");
+    } catch (e: any) {
+      alert('Erreur agent local: ' + (e?.message || 'inconnue'));
+    }
+  }
+  // Impression locale via Zebra Browser Print (imprimante USB locale)
+  async function ensureBrowserPrint(): Promise<any | null> {
+    if ((window as any).BrowserPrint) return (window as any).BrowserPrint;
+    const hosts = ['127.0.0.1', 'localhost'];
+    const protos: Array<'http' | 'https'> = (location.protocol === 'https:' ? ['https', 'http'] : ['http', 'https']);
+    const files = [
+      'BrowserPrint-3.0.216.min.js', 'BrowserPrint-3.0.216.js',
+      'BrowserPrint-3.0.0.min.js', 'BrowserPrint-3.0.0.js',
+      'BrowserPrint-2.0.1.min.js', 'BrowserPrint-2.0.1.js',
+    ];
+    async function tryLoad(url: string) {
+      await new Promise<void>((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = url;
+        s.async = true;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('load_failed'));
+        document.head.appendChild(s);
+      });
+      return (window as any).BrowserPrint || null;
+    }
+    for (const proto of protos) {
+      for (const host of hosts) {
+        for (const f of files) {
+          const url = `${proto}://${host}:9101/${f}`;
+          try {
+            const bp = await tryLoad(url);
+            if (bp) return bp;
+          } catch {
+            // try next
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  async function printZebraLocal(b: Book) {
+    const BP = await ensureBrowserPrint();
+    if (!BP) { alert("Service Zebra Browser Print non détecté. Installez-le puis réessayez (http://localhost:9101)."); return; }
+    const zpl = buildZplLabel(b, printerDpi);
+    await new Promise<void>((resolve) => setTimeout(resolve, 50)); // petite latence pour init
+    BP.getDefaultDevice('printer', function (device: any) {
+      if (!device) {
+        BP.getLocalDevices(function (devices: any[]) {
+          const printers = (devices || []).filter((d: any) => d && d.deviceType === 'printer');
+          if (printers.length === 0) { alert('Aucune imprimante Zebra locale trouvée.'); return; }
+          const dev = printers[0];
+          dev.send(zpl, () => alert('Étiquette envoyée (local).'), (e: any) => alert('Erreur impression (local): ' + e));
+        }, function () { alert('Impossible d\'énumérer les imprimantes locales.'); }, 'printer');
+        return;
+      }
+      device.send(zpl, () => alert('Étiquette envoyée (local).'), (e: any) => alert('Erreur impression (local): ' + e));
+    }, function () { alert('Impossible de récupérer l\'imprimante par défaut.'); });
+  }
+  // Import CSV (sauvegarde/restauration)
+  type CsvItem = { title: string; author: string; isbn?: string; epc?: string; status: 'ok' | 'error'; error?: string };
+  const [csvText, setCsvText] = useState('');
+  const [csvItems, setCsvItems] = useState<CsvItem[]>([]);
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  function downloadCsvExample() {
+    const sample = 'title,author,isbn,epc\nLe Petit Prince,Antoine de Saint-Exupéry,9782070612758,\nSans ISBN,Auteur Inconnu,,ABCDEF0123456789ABCDEF01\n';
+    const blob = new Blob([sample], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'bibliomanager2-exemple.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function parseCsv(text: string) {
+    setCsvError(null);
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+    if (lines.length === 0) { setCsvItems([]); return; }
+    let headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
+    let start = 0;
+    if (['title','author','isbn','epc'].some((h) => headers.includes(h))) start = 1; else headers = ['title','author','isbn','epc'];
+    const out: CsvItem[] = [];
+    for (let i = start; i < lines.length; i++) {
+      const cols = lines[i].split(',').map((c) => c.trim());
+      const get = (name: string) => {
+        const idx = headers.indexOf(name);
+        return idx >= 0 ? (cols[idx] || '') : '';
+      };
+      const title = get('title');
+      const author = get('author');
+      const isbn = get('isbn');
+      const epc = get('epc');
+      if (!title || !author) { out.push({ title, author, isbn, epc, status: 'error', error: 'Titre et auteur requis' }); continue; }
+      if (epc && !/^([0-9A-Fa-f]{24})$/.test(epc)) { out.push({ title, author, isbn, epc, status: 'error', error: 'EPC invalide (24 hex)' }); continue; }
+      out.push({ title, author, isbn: isbn || undefined, epc: epc ? epc.toUpperCase() : undefined, status: 'ok' });
+    }
+    setCsvItems(out);
+  }
+
+  function importCsvItems() {
+    const ok = csvItems.filter((x) => x.status === 'ok');
+    if (ok.length === 0) { setCsvError('Aucun élément valide à importer'); return; }
+    setBooks((prev) => {
+      const existsByIsbn = new Set(prev.map((b) => (b.isbn || '').toUpperCase()).filter(Boolean));
+      const existsByEpc = new Set(prev.map((b) => b.epc));
+      const toAdd: Book[] = [];
+      for (const it of ok) {
+        const isbnUp = (it.isbn || '').toUpperCase();
+        if ((isbnUp && existsByIsbn.has(isbnUp))) continue;
+        const epcCode = it.epc && /^([0-9A-F]{24})$/.test(it.epc) && !existsByEpc.has(it.epc) ? it.epc : genEpc96();
+        const coverUrl = isbnUp ? `/covers/isbn/${isbnUp}?s=M` : undefined;
+        toAdd.push({
+          id: Date.now() + Math.floor(Math.random() * 1000),
+          epc: epcCode,
+          title: it.title,
+          author: it.author,
+          read: false,
+          createdAt: Date.now(),
+          isbn: isbnUp || undefined,
+          coverUrl,
+        });
+        if (isbnUp) existsByIsbn.add(isbnUp);
+        existsByEpc.add(epcCode);
+      }
+      if (toAdd.length === 0) return prev;
+      return [...toAdd, ...prev];
+    });
+    setCsvItems([]); setCsvText(''); setCsvError(null);
+  }
   useEffect(() => {
     const sync = () => setRoute(window.location.pathname || '/');
     window.addEventListener('popstate', sync);
@@ -75,36 +328,74 @@ export function App() {
       .catch(() => setStatus('error'));
   }, []);
 
-  // Persistence: load once
+  // Persistence: load once (server first, fallback to localStorage)
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('bm2/books');
-      if (raw) {
-        const parsed = JSON.parse(raw) as Book[];
-        if (Array.isArray(parsed)) setBooks(parsed);
+    (async () => {
+      let loaded = false;
+      try {
+        const r = await fetch('/api/state');
+        if (r.ok) {
+          const d = await r.json();
+          if (d && Array.isArray(d.books)) {
+            const migratedBooks: Book[] = (d.books as any[]).map((b: any) => ({
+              id: typeof b.id === 'number' ? b.id : Date.now(),
+              epc: typeof b.epc === 'string' && /^([0-9A-Fa-f]{24})$/.test(b.epc) ? String(b.epc).toUpperCase() : genEpc96(),
+              title: String(b.title || ''),
+              author: String(b.author || ''),
+              read: !!b.read,
+              createdAt: typeof b.createdAt === 'number' ? b.createdAt : Date.now(),
+              isbn: b.isbn || undefined,
+              barcode: b.barcode || undefined,
+              coverUrl: b.coverUrl || undefined,
+            }));
+            setBooks(migratedBooks);
+            if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
+            loaded = true;
+          }
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
-    try {
-      const rawLoans = localStorage.getItem('bm2/loans');
-      if (rawLoans) {
-        const parsed = JSON.parse(rawLoans) as Loan[];
-        if (Array.isArray(parsed)) setLoans(parsed);
+      if (!loaded) {
+        try {
+          const raw = localStorage.getItem('bm2/books');
+          if (raw) {
+            const parsed = JSON.parse(raw) as any[];
+            if (Array.isArray(parsed)) {
+              const migrated: Book[] = parsed.map((b: any) => ({
+                id: typeof b.id === 'number' ? b.id : Date.now(),
+                epc: typeof b.epc === 'string' && /^([0-9A-Fa-f]{24})$/.test(b.epc) ? String(b.epc).toUpperCase() : genEpc96(),
+                title: String(b.title || ''),
+                author: String(b.author || ''),
+                read: !!b.read,
+                createdAt: typeof b.createdAt === 'number' ? b.createdAt : Date.now(),
+                isbn: b.isbn || undefined,
+                barcode: b.barcode || undefined,
+                coverUrl: b.coverUrl || undefined,
+              }));
+              setBooks(migrated);
+            }
+          }
+        } catch {}
+        try {
+          const rawLoans = localStorage.getItem('bm2/loans');
+          if (rawLoans) {
+            const parsed = JSON.parse(rawLoans) as Loan[];
+            if (Array.isArray(parsed)) setLoans(parsed);
+          }
+        } catch {}
       }
-    } catch {
-      // ignore
-    }
-    // initialize loan dates
-    const today = new Date();
-    const toISO = (d: Date) => d.toISOString().slice(0, 10);
-    const inDays = (n: number) => {
-      const d = new Date(today);
-      d.setDate(d.getDate() + n);
-      return d;
-    };
-    setLoanStartDate(toISO(today));
-    setLoanDueDate(toISO(inDays(14)));
+      // initialize loan dates
+      const today = new Date();
+      const toISO = (d: Date) => d.toISOString().slice(0, 10);
+      const inDays = (n: number) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() + n);
+        return d;
+      };
+      setLoanStartDate(toISO(today));
+      setLoanDueDate(toISO(inDays(14)));
+    })();
   }, []);
 
   // Persistence: save on change
@@ -124,6 +415,20 @@ export function App() {
     }
   }, [loans]);
 
+  // Server sync (debounced)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        fetch('/api/state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ books, loans }),
+        }).catch(() => {});
+      } catch {}
+    }, 300);
+    return () => clearTimeout(t);
+  }, [books, loans]);
+
   function addBook() {
     if (isAddDisabled) return;
     const cleanIsbn = isbn.replace(/[^0-9Xx]/g, '').toUpperCase();
@@ -131,6 +436,7 @@ export function App() {
     setBooks((prev) => [
       {
         id: Date.now(),
+        epc: genEpc96(),
         title: title.trim(),
         author: author.trim(),
         read: false,
@@ -155,7 +461,7 @@ export function App() {
     setBooks((prev) =>
       prev.map((b) => {
         if (b.id !== id) return b;
-        const next: Book = { ...b, ...patch };
+        const next: Book = { ...b, ...patch } as Book;
         if (Object.prototype.hasOwnProperty.call(patch, 'isbn')) {
           const clean = (patch.isbn || '').replace(/[^0-9Xx]/g, '').toUpperCase();
           next.isbn = clean || undefined;
@@ -186,7 +492,8 @@ export function App() {
       return matchesQuery && matchesStatus;
     });
     list = list.sort((a, b) => {
-      if (sortBy === 'recent') return b.createdAt - a.createdAt;
+      if (sortBy === 'recent' || sortBy === 'addedDesc') return b.createdAt - a.createdAt;
+      if (sortBy === 'addedAsc') return a.createdAt - b.createdAt;
       if (sortBy === 'title') return a.title.localeCompare(b.title);
       return a.author.localeCompare(b.author);
     });
@@ -303,6 +610,333 @@ export function App() {
     return "Longueur d'ISBN attendue: 10 ou 13";
   }, [isbn]);
 
+  // UID générateur (court, RFID/QR friendly): 1 lettre + 8 chars Base32 Crockford (9 caractères)
+  function genUID() {
+    try {
+      const bytes = new Uint8Array(5); // 40 bits -> 8 caractères en Base32
+      crypto.getRandomValues(bytes);
+      const alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // Crockford (sans I, L, O, U)
+      let val = 0;
+      let bits = 0;
+      let out = '';
+      for (let i = 0; i < bytes.length; i++) {
+        val = (val << 8) | bytes[i];
+        bits += 8;
+        while (bits >= 5) {
+          const idx = (val >>> (bits - 5)) & 31;
+          bits -= 5;
+          out += alphabet[idx];
+        }
+      }
+      if (bits > 0) out += alphabet[(val << (5 - bits)) & 31];
+      return 'B' + out.slice(0, 8);
+    } catch {
+      const alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+      let out = '';
+      for (let i = 0; i < 8; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+      return 'B' + out;
+    }
+  }
+
+  // EPC-96 generator (24 hex chars)
+  function genEpc96(): string {
+    try {
+      const arr = new Uint8Array(12); // 96 bits
+      crypto.getRandomValues(arr);
+      let hex = '';
+      arr.forEach((b) => (hex += b.toString(16).padStart(2, '0')));
+      return hex.toUpperCase();
+    } catch {
+      let hex = '';
+      for (let i = 0; i < 12; i++) hex += Math.floor(Math.random() * 256).toString(16).padStart(2, '0');
+      return hex.toUpperCase();
+    }
+  }
+
+  // Génération QR (import dynamique depuis CDN)
+  async function genQrDataUrl(text: string, size = 180) {
+    try {
+      const mod = await import('https://cdn.jsdelivr.net/npm/qrcode@1.5.3/+esm');
+      const dataUrl = await (mod as any).toDataURL(text, {
+        errorCorrectionLevel: 'M',
+        width: size,
+        margin: 1,
+        type: 'image/png',
+        color: { dark: '#000000', light: '#FFFFFF' },
+      });
+      return dataUrl as string;
+    } catch {
+      return '';
+    }
+  }
+
+  async function printBookCard(b: Book) {
+    const size = 220;
+    const qr = await genQrDataUrl(b.epc, size);
+    const w = window.open('', '_blank', 'width=420,height=600');
+    if (!w) return;
+    const html = `<!DOCTYPE html>
+    <html lang="fr"><head><meta charset="utf-8" />
+    <title>Carte ${b.title}</title>
+    <style>
+      @media print { body { margin: 0; } .no-print { display: none; } }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; }
+      .card { width: 320px; border: 2px solid #111; border-radius: 12px; padding: 16px; margin: 0 auto; }
+      .title { font-weight: 700; font-size: 16px; margin-bottom: 2px; }
+      .author { color: #444; font-size: 13px; margin-bottom: 10px; }
+      .row { display:flex; gap: 12px; align-items: center; }
+      .uid { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color:#111; }
+      .codes { font-size: 12px; color: #333; }
+      .qr { width: ${size}px; height: ${size}px; border: 1px solid #000; }
+      .actions { margin-top: 12px; text-align: right; }
+      button { padding: 8px 12px; border: 1px solid #111; background: #fff; border-radius: 8px; cursor: pointer; }
+    </style>
+    </head><body>
+      <div class="card">
+        <div class="title">${(b.title || '').replace(/</g, '&lt;')}</div>
+        <div class="author">${(b.author || '').replace(/</g, '&lt;')}</div>
+        <div class="row">
+          <img class="qr" src="${qr}" alt="QR" />
+        </div>
+      <div class="actions no-print"><button onclick="window.print()">Imprimer</button></div>
+      </div>
+      <script>
+        (function(){
+          function go(){ try{ window.focus(); window.print(); }catch(e){} setTimeout(function(){ try{ window.close(); }catch(e){} }, 300); }
+          var img = document.querySelector('.qr');
+          if(img && !img.complete){ img.addEventListener('load', go, { once: true }); img.addEventListener('error', go, { once: true }); }
+          else { go(); }
+        })();
+      </script>
+    </body></html>`;
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    try { w.focus(); } catch {}
+  }
+
+  // Impression d'étiquette 44×19 mm (QR EPC + titre)
+  async function printEpcLabel(b: Book) {
+    const qr = await genQrDataUrl(b.epc, 180);
+    const w = window.open('', '_blank', 'width=600,height=400');
+    if (!w) return;
+    const title = (b.title || '').replace(/</g, '&lt;');
+    const author = (b.author || '').replace(/</g, '&lt;');
+    const html = `<!DOCTYPE html>
+    <html lang="fr"><head><meta charset="utf-8" />
+    <title>Étiquette ${title}</title>
+    <style>
+      @page { size: 44mm 19mm; margin: 0; }
+      @media print { body { margin: 0; } .no-print { display: none; } }
+      html, body { width: 44mm; height: 19mm; }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+      .label { box-sizing: border-box; width: 44mm; height: 19mm; padding: 1.5mm 1.5mm; display: flex; align-items: center; gap: 2mm; }
+      .qr { width: 16mm; height: 16mm; }
+      .text { flex: 1; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+      .title { font-weight: 700; font-size: 8pt; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .author { font-size: 7pt; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .actions { text-align: right; padding: 6px; }
+      button { padding: 6px 10px; border: 1px solid #111; background: #fff; border-radius: 6px; cursor: pointer; }
+    </style>
+    </head><body>
+      <div class="label">
+        <img class="qr" src="${qr}" alt="QR" />
+        <div class="text">
+          <div class="title">${title}</div>
+          <div class="author">${author}</div>
+        </div>
+      </div>
+      <div class="actions no-print"><button onclick="window.print()">Imprimer</button></div>
+      <script>
+        (function(){
+          function go(){ try{ window.focus(); window.print(); }catch(e){} setTimeout(function(){ try{ window.close(); }catch(e){} }, 300); }
+          var img = document.querySelector('.qr');
+          if(img && !img.complete){ img.addEventListener('load', go, { once: true }); img.addEventListener('error', go, { once: true }); }
+          else { go(); }
+        })();
+      </script>
+    </body></html>`;
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    try { w.focus(); } catch {}
+  }
+
+  function QrPreview({ value, size = 128 }: { value: string; size?: number }) {
+    const [url, setUrl] = useState('');
+    useEffect(() => {
+      let cancelled = false;
+      (async () => {
+        const d = await genQrDataUrl(value, size);
+        if (!cancelled) setUrl(d);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [value, size]);
+    return url ? (
+      <img src={url} width={size} height={size} alt="QR code" style={{ border: '1px solid #111', background: 'white' }} />
+    ) : (
+      <div style={{ width: size, height: size, background: '#f3f4f6', border: '1px dashed #999', borderRadius: 6 }} />
+    );
+  }
+
+  // Import helpers
+  function isValidBarcodeEAN13(s: string) {
+    const d = s.replace(/\D/g, '');
+    if (d.length !== 13) return false;
+    let sum = 0;
+    for (let i = 0; i < 12; i++) sum += Number(d[i]) * (i % 2 === 0 ? 1 : 3);
+    const check = (10 - (sum % 10)) % 10;
+    return check === Number(d[12]);
+  }
+
+  function ensureImportItem(barcode: string) {
+    const code = barcode.replace(/\D/g, '');
+    if (!code) return;
+    setImportItems((prev) => {
+      if (prev.some((it) => it.barcode === code)) return prev;
+      return [{ barcode: code, status: 'pending' }, ...prev];
+    });
+    (async () => {
+      try {
+        const r = await fetch(`/api/books/lookup?barcode=${encodeURIComponent(code)}`);
+        if (!r.ok) {
+          setImportItems((prev) => prev.map((it) => (it.barcode === code ? { ...it, status: r.status === 404 ? 'not_found' : 'error', error: `HTTP ${r.status}` } : it)));
+          return;
+        }
+        const d = await r.json();
+        const isbn = d.isbn13 || d.isbn10 || '';
+        setImportItems((prev) => prev.map((it) => (it.barcode === code ? { ...it, status: 'ok', title: d.title, author: Array.isArray(d.authors) ? d.authors[0] : undefined, isbn, coverUrl: isbn ? `/covers/isbn/${isbn}?s=S` : undefined } : it)));
+      } catch (e: any) {
+        setImportItems((prev) => prev.map((it) => (it.barcode === code ? { ...it, status: 'error', error: e?.message || 'Erreur' } : it)));
+      }
+    })();
+  }
+
+  async function refreshCameraDevices() {
+    try {
+      setLoadingDevices(true);
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videos = devices.filter((d) => d.kind === 'videoinput') as MediaDeviceInfo[];
+      setCameraDevices(videos);
+      if (!selectedCameraId && videos[0]) setSelectedCameraId(videos[0].deviceId);
+    } catch {}
+    finally { setLoadingDevices(false); }
+  }
+
+  async function startCameraScan() {
+    try {
+      setScanError(null);
+      if ('BarcodeDetector' in window) {
+        // Prefer BarcodeDetector when available
+        // @ts-expect-error BarcodeDetector peut ne pas être typé
+        const Detector = (window as any).BarcodeDetector;
+        detectorRef.current = new Detector({ formats: ['ean_13'] });
+        const constraints: MediaStreamConstraints = {
+          video: selectedCameraId ? { deviceId: { exact: selectedCameraId } } : { facingMode: 'environment' },
+          audio: false,
+        } as any;
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+        setIsScanning(true);
+        refreshCameraDevices().catch(() => {});
+        const loop = async () => {
+          if (!isScanning || !videoRef.current || !detectorRef.current) return;
+          try {
+            const now = Date.now();
+            for (const [k, t] of recentBarcodesRef.current.entries()) if (now - t > 1500) recentBarcodesRef.current.delete(k);
+            const results = await detectorRef.current.detect(videoRef.current);
+            for (const r of results || []) {
+              const raw = String(r.rawValue || '').replace(/\D/g, '');
+              if (raw.length === 13 && !recentBarcodesRef.current.has(raw) && isValidBarcodeEAN13(raw)) {
+                recentBarcodesRef.current.set(raw, Date.now());
+                ensureImportItem(raw);
+              }
+            }
+          } catch {}
+          loopRef.current = requestAnimationFrame(loop);
+        };
+        loopRef.current = requestAnimationFrame(loop);
+        return;
+      }
+
+      // Fallback to ZXing for wider browser support
+      await startZxingScan();
+    } catch (e: any) {
+      setScanError(e?.message || 'Impossible de démarrer la caméra');
+    }
+  }
+
+  async function startZxingScan() {
+    // Dynamically import ZXing ESM from CDN to avoid bundling
+    const mod = await import('https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.4/+esm');
+    const { BrowserMultiFormatReader } = mod as any;
+    const reader = new BrowserMultiFormatReader();
+    zxingReaderRef.current = reader;
+    setIsScanning(true);
+    const controls = await reader.decodeFromVideoDevice(
+      selectedCameraId || undefined,
+      videoRef.current!,
+      (result: any, err: any) => {
+        if (result) {
+          const raw = String(result.getText ? result.getText() : result.text || '').replace(/\D/g, '');
+          if (raw && raw.length === 13 && isValidBarcodeEAN13(raw)) {
+            const seen = recentBarcodesRef.current.get(raw);
+            const now = Date.now();
+            if (!seen || now - seen > 1500) {
+              recentBarcodesRef.current.set(raw, now);
+              ensureImportItem(raw);
+            }
+          }
+        }
+      }
+    );
+    zxingControlsRef.current = controls;
+    refreshCameraDevices().catch(() => {});
+  }
+
+  async function stopCameraScan() {
+    setIsScanning(false);
+    if (loopRef.current) cancelAnimationFrame(loopRef.current);
+    loopRef.current = null;
+    if (videoRef.current) {
+      try { videoRef.current.pause(); } catch {}
+      videoRef.current.srcObject = null;
+    }
+    if (streamRef.current) {
+      for (const track of streamRef.current.getTracks()) track.stop();
+    }
+    streamRef.current = null;
+    // Stop ZXing if used
+    try {
+      if (zxingControlsRef.current && typeof zxingControlsRef.current.stop === 'function') {
+        zxingControlsRef.current.stop();
+      }
+    } catch {}
+    try {
+      if (zxingReaderRef.current && typeof zxingReaderRef.current.reset === 'function') {
+        zxingReaderRef.current.reset();
+      }
+    } catch {}
+    zxingControlsRef.current = null;
+    zxingReaderRef.current = null;
+  }
+
+  useEffect(() => {
+    if (route !== '/import') stopCameraScan();
+  }, [route]);
+
+  useEffect(() => {
+    if (route === '/import' && importMode === 'camera') {
+      refreshCameraDevices().catch(() => {});
+    }
+  }, [route, importMode]);
+
   // Recherche suggestions pour l'ajout
   useEffect(() => {
     if (!showAddSuggestions) return;
@@ -341,6 +975,7 @@ export function App() {
     setBooks((prev) => [
       {
         id: Date.now(),
+        epc: genEpc96(),
         title: t.trim(),
         author: a.trim(),
         read: false,
@@ -519,12 +1154,50 @@ export function App() {
       );
     }
     list = list.sort((a, b) => {
-      if (sortBy === 'recent') return b.createdAt - a.createdAt;
+      if (sortBy === 'recent' || sortBy === 'addedDesc') return b.createdAt - a.createdAt;
+      if (sortBy === 'addedAsc') return a.createdAt - b.createdAt;
       if (sortBy === 'title') return a.title.localeCompare(b.title);
       return a.author.localeCompare(b.author);
     });
     return list;
   }, [books, loans, query, sortBy]);
+
+  function addImportFromInput() {
+    const lines = importInput.split(/\s|,|;|\n|\r/g).map((s) => s.trim()).filter(Boolean);
+    for (const l of lines) ensureImportItem(l);
+    setImportInput('');
+  }
+
+  function importAllToLibrary() {
+    const okItems = importItems.filter((it) => it.status === 'ok');
+    if (okItems.length === 0) return;
+    setBooks((prev) => {
+      const existsByIsbn = new Set(prev.map((b) => (b.isbn || '').toUpperCase()).filter(Boolean));
+      const existsByBarcode = new Set(prev.map((b) => (b.barcode || '')).filter(Boolean));
+      const toAdd: Book[] = [];
+      for (const it of okItems) {
+        const isbnUp = (it.isbn || '').toUpperCase();
+        if ((isbnUp && existsByIsbn.has(isbnUp)) || (it.barcode && existsByBarcode.has(it.barcode))) continue;
+        const coverUrl = isbnUp ? `/covers/isbn/${isbnUp}?s=M` : undefined;
+        toAdd.push({
+          id: Date.now() + Math.floor(Math.random() * 1000),
+          epc: genEpc96(),
+          title: it.title || '(Sans titre)',
+          author: it.author || '(Auteur inconnu)',
+          read: false,
+          createdAt: Date.now(),
+          isbn: isbnUp || undefined,
+          barcode: it.barcode,
+          coverUrl,
+        });
+        if (isbnUp) existsByIsbn.add(isbnUp);
+        if (it.barcode) existsByBarcode.add(it.barcode);
+      }
+      if (toAdd.length === 0) return prev;
+      return [...toAdd, ...prev];
+    });
+    setImportItems((prev) => prev.filter((it) => it.status !== 'ok'));
+  }
 
   return (
     <main
@@ -561,6 +1234,7 @@ export function App() {
           {[
             { to: '/livres/disponibles', label: 'Livres disponibles' },
             { to: '/livres/nouveau', label: 'Ajouter un livre' },
+            { to: '/import', label: 'Import en masse' },
             { to: '/prets', label: 'Prêts' },
           ].map((item) => (
             <a
@@ -662,6 +1336,30 @@ export function App() {
               <div>
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>Prêts</div>
                 <div style={{ color: '#555', fontSize: 14 }}>Créer et suivre les prêts</div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => navigate('/import')}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                padding: 20,
+                borderRadius: 16,
+                border: '2px solid #e5e7eb',
+                background: '#ffffff',
+                minHeight: 140,
+                textAlign: 'left',
+                fontSize: 18,
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ fontSize: 28 }}>📦</div>
+              <div>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Import en masse</div>
+                <div style={{ color: '#555', fontSize: 14 }}>Scanner des codes-barres</div>
               </div>
             </button>
           </div>
@@ -841,6 +1539,9 @@ export function App() {
             onChange={(e) => setQuery(e.target.value)}
             style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', minWidth: 240 }}
           />
+          {query.trim() && (
+            <button type="button" onClick={() => setQuery('')} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #ddd', background: '#f9fafb' }}>Effacer le filtre</button>
+          )}
           <select
             aria-label="Filtrer par statut"
             value={statusFilter}
@@ -857,7 +1558,8 @@ export function App() {
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
             style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd' }}
           >
-            <option value="recent">Plus récent</option>
+            <option value="recent">Ajout (récent → ancien)</option>
+            <option value="addedAsc">Ajout (ancien → récent)</option>
             <option value="title">Titre (A→Z)</option>
             <option value="author">Auteur (A→Z)</option>
           </select>
@@ -865,6 +1567,7 @@ export function App() {
         {visibleBooks.length === 0 ? (
           <p>Aucun livre correspondant. Ajoutez-en un ci-dessus ou modifiez le filtre.</p>
         ) : (
+          <>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
             {visibleBooks.map((b) => (
               <li
@@ -939,9 +1642,27 @@ export function App() {
                       )}
                     </div>
                   )}
+                  
+                  {b.epc && (
+                    <div style={{ color: '#333', fontSize: 12, marginTop: 2 }}>EPC: <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{b.epc}</span></div>
+                  )}
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, marginLeft: 12 }}>
+                <div style={{ display: 'flex', gap: 8, marginLeft: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => printViaLocalAgent(b)}
+                    title="Imprimer une étiquette 44×19 via l'agent USB Zebra"
+                    style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #2563eb', background: '#3b82f6', color: '#fff' }}
+                  >
+                    Imprimer (USB Zebra)
+                  </button>
+                  <button
+                    onClick={() => setShowCardFor((id) => (id === b.id ? null : b.id))}
+                    style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #111', background: '#fff' }}
+                    aria-expanded={showCardFor === b.id}
+                  >
+                    Carte
+                  </button>
                   {editingBookId === b.id ? (
                     <button
                       onClick={() => setEditingBookId(null)}
@@ -975,12 +1696,40 @@ export function App() {
               </li>
             ))}
           </ul>
+          {showCardFor && (
+            <div style={{ marginTop: 12, borderTop: '1px dashed #ddd', paddingTop: 12 }}>
+              {(() => {
+                const b = visibleBooks.find((x) => x.id === showCardFor);
+                if (!b) return null;
+                return (
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div>
+                      <strong>Carte d’impression</strong>
+                    </div>
+                    <div>
+                      <QrPreview value={b.epc} size={180} />
+                    </div>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <label style={{ fontSize: 12, color: '#333' }}>DPI</label>
+                      <select aria-label="DPI" value={printerDpi} onChange={(e) => setPrinterDpi(parseInt(e.target.value, 10))} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #ddd' }}>
+                        <option value={203}>203</option>
+                        <option value={300}>300</option>
+                        <option value={600}>600</option>
+                      </select>
+                      <button onClick={() => printViaLocalAgent(b)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: '#fff' }}>Imprimer (USB Zebra)</button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+          </>
         )}
       </section>
       )}
 
       {route === '/livres/disponibles' && (
-      <section style={{ padding: 16, border: '1px solid #eee', borderRadius: 8 }}>
+      <section style={{ padding: 16, border: '1px solid #eee', borderRadius: 8, position: 'relative' }}>
         <h2 style={{ marginTop: 0 }}>Livres disponibles ({availableBooks.length})</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
           <input
@@ -990,13 +1739,17 @@ export function App() {
             onChange={(e) => setQuery(e.target.value)}
             style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', minWidth: 240 }}
           />
+          {query.trim() && (
+            <button type="button" onClick={() => setQuery('')} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #ddd', background: '#f9fafb' }}>Effacer le filtre</button>
+          )}
           <select
             aria-label="Trier par"
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
             style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd' }}
           >
-            <option value="recent">Plus récent</option>
+            <option value="recent">Ajout (récent → ancien)</option>
+            <option value="addedAsc">Ajout (ancien → récent)</option>
             <option value="title">Titre (A→Z)</option>
             <option value="author">Auteur (A→Z)</option>
           </select>
@@ -1004,44 +1757,104 @@ export function App() {
         {availableBooks.length === 0 ? (
           <p>Aucun livre disponible pour le moment.</p>
         ) : (
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
             {availableBooks.map((b) => (
-              <li
-                key={b.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '10px 12px',
-                  border: '1px solid #eee',
-                  borderRadius: 8,
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 600 }}>{b.title}</div>
-                  <div style={{ color: '#555', fontSize: 14 }}>par {b.author}</div>
-                  {(b.isbn || b.barcode) && (
-                    <div style={{ color: '#666', fontSize: 12, marginTop: 4 }}>
-                      {b.isbn && <span>ISBN: {b.isbn}</span>}
-                      {b.isbn && b.barcode && <span> · </span>}
-                      {b.barcode && <span>Code-barres: {b.barcode}</span>}
-                    </div>
+              <li key={b.id}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAvailableBook(b)}
+                  aria-label={`Voir détails de ${b.title}`}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    border: '1px solid #e5e7eb',
+                    background: '#fff',
+                    borderRadius: 12,
+                    padding: 12,
+                    display: 'grid',
+                    gridTemplateColumns: '48px 1fr',
+                    gap: 12,
+                  }}
+                >
+                  {b.isbn ? (
+                    <img src={`/covers/isbn/${b.isbn}?s=S`} alt="" width={48} height={72} style={{ objectFit: 'cover', borderRadius: 6 }} />
+                  ) : b.coverUrl ? (
+                    <img src={b.coverUrl} alt="" width={48} height={72} style={{ objectFit: 'cover', borderRadius: 6 }} />
+                  ) : (
+                    <div style={{ width: 48, height: 72, background: '#f3f4f6', borderRadius: 6 }} />
                   )}
-                </div>
-                <div style={{ display: 'flex', gap: 8, marginLeft: 12 }}>
-                  <a href="/prets" onClick={(e) => { e.preventDefault(); navigate('/prets'); }} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>
-                    Prêter
-                  </a>
-                  <button onClick={() => setEditingBookId(b.id)} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #10b981', background: '#10b981', color: 'white' }}>
-                    Éditer
-                  </button>
-                  <button onClick={() => removeBook(b.id)} aria-label={`Supprimer ${b.title}`} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ef4444', background: '#ef4444', color: 'white', cursor: 'pointer' }}>
-                    Supprimer
-                  </button>
-                </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.title}</div>
+                    <div style={{ color: '#555', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.author}</div>
+                    {(b.isbn || b.barcode) && (
+                      <div style={{ color: '#666', fontSize: 12, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {b.isbn && <span>ISBN {b.isbn}</span>}
+                        {b.isbn && b.barcode && <span> · </span>}
+                        {b.barcode && <span>CB {b.barcode}</span>}
+                      </div>
+                    )}
+                  </div>
+                </button>
               </li>
             ))}
           </ul>
+        )}
+
+        {selectedAvailableBook && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={() => setSelectedAvailableBook(null)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.4)',
+              display: 'grid',
+              placeItems: 'center',
+              padding: 16,
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{ background: 'white', borderRadius: 12, padding: 16, width: 'min(560px, 92vw)', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+                {selectedAvailableBook.isbn ? (
+                  <img src={`/covers/isbn/${selectedAvailableBook.isbn}?s=M`} alt="" width={96} height={144} style={{ objectFit: 'cover', borderRadius: 8 }} />
+                ) : selectedAvailableBook.coverUrl ? (
+                  <img src={selectedAvailableBook.coverUrl} alt="" width={96} height={144} style={{ objectFit: 'cover', borderRadius: 8 }} />
+                ) : (
+                  <div style={{ width: 96, height: 144, background: '#f3f4f6', borderRadius: 8 }} />
+                )}
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <h3 style={{ margin: '4px 0 6px 0' }}>{selectedAvailableBook.title}</h3>
+                  <div style={{ color: '#555', marginBottom: 8 }}>par {selectedAvailableBook.author}</div>
+                  <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: '120px 1fr', rowGap: 6 }}>
+                    <dt style={{ color: '#666' }}>Statut</dt>
+                    <dd style={{ margin: 0 }}>Disponible</dd>
+                    {selectedAvailableBook.isbn && (
+                      <>
+                        <dt style={{ color: '#666' }}>ISBN</dt>
+                        <dd style={{ margin: 0 }}>{selectedAvailableBook.isbn}</dd>
+                      </>
+                    )}
+                    {selectedAvailableBook.barcode && (
+                      <>
+                        <dt style={{ color: '#666' }}>Code-barres</dt>
+                        <dd style={{ margin: 0 }}>{selectedAvailableBook.barcode}</dd>
+                      </>
+                    )}
+                    <dt style={{ color: '#666' }}>Ajouté le</dt>
+                    <dd style={{ margin: 0 }}>{new Date(selectedAvailableBook.createdAt).toLocaleDateString()}</dd>
+                  </dl>
+                </div>
+              </div>
+              <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setSelectedAvailableBook(null)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', background: '#f9fafb' }}>Fermer</button>
+              </div>
+            </div>
+          </div>
         )}
       </section>
       )}
@@ -1285,6 +2098,179 @@ export function App() {
                 </li>
               );
             })}
+          </ul>
+        )}
+      </section>
+      )}
+
+      {route === '/import' && (
+      <section style={{ padding: 16, border: '1px solid #eee', borderRadius: 8 }}>
+        <h2 style={{ marginTop: 0 }}>Import en masse</h2>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => setImportMode('lecteur')}
+            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', background: importMode === 'lecteur' ? '#e5f3ff' : '#fff' }}
+          >
+            Lecteur externe
+          </button>
+          <button
+            type="button"
+            onClick={async () => { setImportMode('camera'); await refreshCameraDevices(); if (!isScanning) await startCameraScan(); }}
+            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', background: importMode === 'camera' ? '#e5f3ff' : '#fff' }}
+          >
+            Caméra (expérimental)
+          </button>
+          <button
+            type="button"
+            onClick={() => setImportMode('csv')}
+            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', background: importMode === 'csv' ? '#e5f3ff' : '#fff' }}
+          >
+            CSV (titre,auteur,isbn,epc)
+          </button>
+        </div>
+
+        {importMode === 'lecteur' && (
+          <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
+            <label style={{ fontWeight: 600 }}>Scanner des codes (un par ligne)</label>
+            <textarea
+              aria-label="Barcodes"
+              rows={4}
+              placeholder="Collez ou scannez des codes-barres ici…"
+              value={importInput}
+              onChange={(e) => setImportInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || e.shiftKey === false)) { e.preventDefault(); addImportFromInput(); } }}
+              style={{ padding: 10, borderRadius: 8, border: '1px solid #ddd', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" onClick={addImportFromInput} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>Ajouter</button>
+              <button type="button" onClick={() => setImportInput('')} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', background: '#f9fafb' }}>Effacer</button>
+            </div>
+            <small style={{ color: '#666' }}>Astuce: la plupart des lecteurs USB émulent un clavier et envoient « Entrée » après la saisie.</small>
+          </div>
+        )}
+
+        {importMode === 'camera' && (
+          <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {!isScanning ? (
+                <button type="button" onClick={startCameraScan} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>Démarrer la caméra</button>
+              ) : (
+                <button type="button" onClick={stopCameraScan} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ef4444', background: '#ef4444', color: 'white' }}>Arrêter</button>
+              )}
+              {scanError && <span style={{ color: '#8A1F12' }}>{scanError}</span>}
+              <button type="button" onClick={refreshCameraDevices} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', background: '#f9fafb' }}>{loadingDevices ? 'Scan…' : 'Rafraîchir les caméras'}</button>
+            </div>
+            {cameraDevices.length > 0 && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <label style={{ fontWeight: 600 }}>Caméra</label>
+                <select
+                  aria-label="Choisir la caméra"
+                  value={selectedCameraId}
+                  onChange={async (e) => {
+                    const id = e.target.value;
+                    setSelectedCameraId(id);
+                    if (isScanning) { await stopCameraScan(); await startCameraScan(); }
+                  }}
+                  style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #ddd', minWidth: 220 }}
+                >
+                  {cameraDevices.map((d, i) => (
+                    <option key={d.deviceId || i} value={d.deviceId}>
+                      {(d.label && d.label.trim()) || `Caméra ${i + 1}`}
+                    </option>
+                  ))}
+                </select>
+                {cameraDevices.length > 1 && (
+                  <button type="button" onClick={async () => { await cycleCamera(); }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', background: '#f9fafb' }}>Basculer</button>
+                )}
+              </div>
+            )}
+            <div style={{ position: 'relative', width: 'min(640px, 100%)' }}>
+              <video ref={videoRef} muted playsInline style={{ width: '100%', borderRadius: 12, border: '1px solid #e5e7eb', background: '#000' }} />
+              <div style={{ position: 'absolute', inset: 0, border: '2px dashed rgba(255,255,255,0.6)', borderRadius: 12, pointerEvents: 'none' }} />
+            </div>
+            <small style={{ color: '#666' }}>
+              La caméra utilise BarcodeDetector quand disponible (Chrome/Edge), sinon bascule automatiquement sur ZXing (fonctionne sur Safari/Firefox).
+            </small>
+          </div>
+        )}
+
+        {importMode === 'csv' && (
+          <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button type="button" onClick={downloadCsvExample} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', background: '#f9fafb' }}>Télécharger un exemple CSV</button>
+              <input ref={fileInputRef} type="file" accept=".csv,text/csv" onChange={async (e) => {
+                const f = e.currentTarget.files && e.currentTarget.files[0];
+                if (!f) return;
+                const text = await f.text();
+                setCsvText(text);
+                parseCsv(text);
+              }} />
+            </div>
+            <label style={{ fontWeight: 600 }}>Coller du CSV (entêtes: title,author,isbn,epc)</label>
+            <textarea
+              aria-label="CSV"
+              rows={6}
+              placeholder="title,author,isbn,epc\nMon titre,Mon auteur,978...,ABCDEF0123456789ABCDEF01"
+              value={csvText}
+              onChange={(e) => { setCsvText(e.target.value); parseCsv(e.target.value); }}
+              style={{ padding: 10, borderRadius: 8, border: '1px solid #ddd', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
+            />
+            {csvError && <div style={{ color: '#8A1F12' }}>{csvError}</div>}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong>Aperçu: {csvItems.length} ligne(s)</strong>
+              <button type="button" onClick={importCsvItems} disabled={csvItems.every((x) => x.status !== 'ok')} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #10b981', background: csvItems.some((x) => x.status === 'ok') ? '#10b981' : '#9ae6b4', color: 'white' }}>Importer {csvItems.filter((x) => x.status === 'ok').length} livre(s)</button>
+            </div>
+            {csvItems.length > 0 && (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 6 }}>
+                {csvItems.map((it, i) => (
+                  <li key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, border: '1px solid #eee', borderRadius: 8, padding: '8px 10px' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.title} — <span style={{ fontWeight: 400 }}>{it.author}</span></div>
+                      <div style={{ color: '#555', fontSize: 12 }}>{it.isbn ? `ISBN ${it.isbn}` : 'ISBN non fourni'}{it.epc ? ` · EPC ${it.epc}` : ''}</div>
+                    </div>
+                    <span style={{ padding: '4px 8px', borderRadius: 999, fontSize: 12, border: '1px solid #ddd', background: it.status === 'ok' ? '#E7F7EE' : '#FDECEA', color: it.status === 'ok' ? '#0E7A4D' : '#8A1F12' }}>
+                      {it.status === 'ok' ? 'OK' : it.error || 'Erreur'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <h3 style={{ margin: 0 }}>À importer ({importItems.length})</h3>
+          <button type="button" onClick={importAllToLibrary} disabled={importItems.every((it) => it.status !== 'ok')} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #10b981', background: importItems.some((it) => it.status === 'ok') ? '#10b981' : '#9ae6b4', color: 'white' }}>
+            Importer les livres OK ({importItems.filter((it) => it.status === 'ok').length})
+          </button>
+        </div>
+        {importItems.length === 0 ? (
+          <p>Aucun élément en file d'import.</p>
+        ) : (
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
+            {importItems.map((it) => (
+              <li key={it.barcode} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 12px', border: '1px solid #eee', borderRadius: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                  {it.isbn ? (
+                    <img src={`/covers/isbn/${it.isbn}?s=S`} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
+                  ) : (
+                    <div style={{ width: 36, height: 54, background: '#f3f4f6', borderRadius: 4 }} />
+                  )}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.title || '(Titre inconnu)'}</div>
+                    <div style={{ color: '#666', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.author || ''}</div>
+                    <div style={{ color: '#666', fontSize: 12 }}>CB {it.barcode}{it.isbn ? ` · ISBN ${it.isbn}` : ''}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ padding: '4px 8px', borderRadius: 999, fontSize: 12, border: '1px solid #ddd', background: it.status === 'ok' ? '#E7F7EE' : it.status === 'pending' ? '#f3f4f6' : it.status === 'not_found' ? '#FEF3C7' : '#FDECEA', color: it.status === 'ok' ? '#0E7A4D' : it.status === 'not_found' ? '#8B5E00' : it.status === 'error' ? '#8A1F12' : '#333' }}>
+                    {it.status === 'ok' ? 'OK' : it.status === 'pending' ? 'En cours' : it.status === 'not_found' ? 'Introuvable' : 'Erreur'}
+                  </span>
+                  <button type="button" onClick={() => setImportItems((prev) => prev.filter((x) => x.barcode !== it.barcode))} aria-label={`Retirer ${it.barcode}`} style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid #ddd', background: '#f9fafb' }}>Retirer</button>
+                </div>
+              </li>
+            ))}
           </ul>
         )}
       </section>

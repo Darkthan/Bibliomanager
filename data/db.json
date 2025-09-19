@@ -1,0 +1,15 @@
+{
+  "books": [
+    {
+      "id": 1758196787687,
+      "epc": "9C187F72538A45B605527608",
+      "title": "Harry Potter and the Philosopher's Stone",
+      "author": "J. K. Rowling",
+      "read": false,
+      "createdAt": 1758196787688,
+      "isbn": "9781781101315",
+      "coverUrl": "/covers/isbn/9781781101315?s=M"
+    }
+  ],
+  "loans": []
+}
