@@ -1,15 +1,29 @@
+PS C:\Users\lducreux.PEDAGO\Documents\DevProjects\Bibliomanager2> npm run build
+
+> bibliomanager2@0.0.6 build
+> npm run build:server && npm run build:client
+
+> bibliomanager2@0.0.6 build:server
+> tsc -p tsconfig.json
+
+> bibliomanager2@0.0.6 build:client
+> vite build --config client/vite.config.ts
+
+vite v7.1.5 building for production...
+✓ 3 modules transformed.
+✗ Build failed in 64ms
 error during build:
 [vite:esbuild] Transform failed with 1 error:
-C:/Users/lducreux.PEDAGO/Documents/DevProjects/Bibliomanager2/client/src/App.tsx:168:38: ERROR: Expected ")" but found "agent"
-file: C:/Users/lducreux.PEDAGO/Documents/DevProjects/Bibliomanager2/client/src/App.tsx:168:38
+C:/Users/lducreux.PEDAGO/Documents/DevProjects/Bibliomanager2/client/src/App.tsx:2392:14: ERROR: Unterminated regular expression
+file: C:/Users/lducreux.PEDAGO/Documents/DevProjects/Bibliomanager2/client/src/App.tsx:2392:14
 
-Expected ")" but found "agent"
-166 |        if (!r.ok) { r = await fetch('http://127.0.0.1:9110/print', payload); }
-167 |        if (!r.ok) throw new Error('Agent répond en erreur');
-168 |        alert('Étiquette envoyée à l'agent local.');
-    |                                        ^
-169 |      } catch (e: any) {
-170 |        alert('Erreur agent local: ' + (e?.message || 'inconnue'));
+Unterminated regular expression
+2390 |              })}
+2391 |            </ul>
+2392 |          </div>
+     |                ^
+2393 |          )}
+2394 |        </section>
 
     at failureErrorWithLog (C:\Users\lducreux.PEDAGO\Documents\DevProjects\Bibliomanager2\node_modules\esbuild\lib\main.js:1467:15)
     at C:\Users\lducreux.PEDAGO\Documents\DevProjects\Bibliomanager2\node_modules\esbuild\lib\main.js:736:50

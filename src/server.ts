@@ -1,8 +1,9 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
-import { mkdir, writeFile, stat as fsStat } from 'node:fs/promises';
+import { mkdir, writeFile as fsWriteFile, stat as fsStat } from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
+import { randomBytes, timingSafeEqual, createHmac, scrypt as _scrypt } from 'node:crypto';
 import net from 'node:net';
 
 // Simple in-memory cache + polite rate limiting for Open Library
@@ -62,6 +63,120 @@ function sendText(res: ServerResponse, status: number, body: string) {
   res.end(body);
 }
 
+// --- Auth & roles (file-based) ---
+type UserRecord = { username: string; pass: string; roles: string[] };
+type SessionClaims = { u: string; r: string[]; exp: number };
+
+const dataDir = join(process.cwd(), 'data');
+const usersPath = join(dataDir, 'users.json');
+const secretPath = join(dataDir, 'auth_secret');
+
+async function ensureSecret(): Promise<Buffer> {
+  await mkdir(dataDir, { recursive: true });
+  try {
+    const b = await readFile(secretPath);
+    if (b && b.length >= 32) return b;
+  } catch {}
+  const s = randomBytes(48);
+  await fsWriteFile(secretPath, s);
+  return s;
+}
+
+async function readUsers(): Promise<UserRecord[]> {
+  try {
+    const buf = await readFile(usersPath);
+    const arr = JSON.parse(buf.toString('utf-8')) as any[];
+    if (Array.isArray(arr)) return arr.filter(Boolean) as UserRecord[];
+  } catch {}
+  return [];
+}
+async function writeUsers(users: UserRecord[]) {
+  await mkdir(dataDir, { recursive: true });
+  await fsWriteFile(usersPath, JSON.stringify(users, null, 2));
+}
+
+function parseCookies(req: IncomingMessage): Record<string, string> {
+  const raw = (req.headers['cookie'] as string) || '';
+  const out: Record<string, string> = {};
+  raw.split(/;\s*/).forEach((p) => {
+    const i = p.indexOf('=');
+    if (i > 0) out[p.slice(0, i)] = decodeURIComponent(p.slice(i + 1));
+  });
+  return out;
+}
+
+function setCookie(res: ServerResponse, name: string, val: string, opts: { httpOnly?: boolean; path?: string; maxAge?: number; sameSite?: 'Lax' | 'Strict' | 'None' } = {}) {
+  const parts = [`${name}=${encodeURIComponent(val)}`];
+  parts.push(`Path=${opts.path || '/'}`);
+  parts.push('Secure');
+  parts.push(`SameSite=${opts.sameSite || 'Lax'}`);
+  if (opts.httpOnly !== false) parts.push('HttpOnly');
+  if (opts.maxAge) parts.push(`Max-Age=${Math.floor(opts.maxAge)}`);
+  const prev = res.getHeader('Set-Cookie');
+  const header = Array.isArray(prev) ? [...prev, parts.join('; ')] : prev ? [String(prev), parts.join('; ')] : [parts.join('; ')];
+  res.setHeader('Set-Cookie', header);
+}
+
+function clearCookie(res: ServerResponse, name: string) {
+  setCookie(res, name, '', { maxAge: 0 });
+}
+
+function base64url(b: Buffer) {
+  return b.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+async function signToken(claims: SessionClaims): Promise<string> {
+  const secret = await ensureSecret();
+  const header = base64url(Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
+  const payload = base64url(Buffer.from(JSON.stringify(claims)));
+  const toSign = `${header}.${payload}`;
+  const sig = createHmac('sha256', secret).update(toSign).digest();
+  return `${toSign}.${base64url(sig)}`;
+}
+
+async function verifyToken(token: string): Promise<SessionClaims | null> {
+  try {
+    const secret = await ensureSecret();
+    const [h, p, s] = token.split('.');
+    if (!h || !p || !s) return null;
+    const toSign = `${h}.${p}`;
+    const expSig = createHmac('sha256', secret).update(toSign).digest();
+    const gotSig = Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+    if (expSig.length !== gotSig.length || !timingSafeEqual(expSig, gotSig)) return null;
+    const claims = JSON.parse(Buffer.from(p.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8')) as SessionClaims;
+    if (typeof claims.exp !== 'number' || Date.now() / 1000 >= claims.exp) return null;
+    if (!Array.isArray(claims.r)) return null;
+    return claims;
+  } catch {
+    return null;
+  }
+}
+
+function scrypt(pass: string, salt: Buffer): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    _scrypt(pass, salt, 64, (err, derivedKey) => {
+      if (err) reject(err); else resolve(derivedKey as Buffer);
+    });
+  });
+}
+
+async function hashPassword(password: string): Promise<string> {
+  const salt = randomBytes(16);
+  const key = await scrypt(password, salt);
+  return `s2:${salt.toString('base64')}:${key.toString('base64')}`;
+}
+
+async function verifyPassword(stored: string, password: string): Promise<boolean> {
+  try {
+    const [tag, saltB64, keyB64] = stored.split(':');
+    if (tag !== 's2') return false;
+    const salt = Buffer.from(saltB64, 'base64');
+    const key = Buffer.from(keyB64, 'base64');
+    const got = await scrypt(password, salt);
+    return got.length === key.length && timingSafeEqual(got, key);
+  } catch { return false; }
+}
+
 export function requestHandler(req: IncomingMessage, res: ServerResponse) {
   const method = req.method || 'GET';
   const host = (req.headers.host as string) || 'localhost';
@@ -72,7 +187,6 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
   }
 
   // Simple JSON storage for app state (books + loans)
-  const dataDir = join(process.cwd(), 'data');
   const dbPath = join(dataDir, 'db.json');
 
   async function readState(): Promise<{ books: any[]; loans: any[] }> {
@@ -109,6 +223,13 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
   if (method === 'POST' && url.pathname === '/api/state') {
     (async () => {
       try {
+        // Require authenticated role (admin/import/loans)
+        const cookies = parseCookies(req);
+        const token = cookies['bm2_auth'] || '';
+        const claims = token ? await verifyToken(token) : null;
+        if (!claims || !Array.isArray(claims.r) || !claims.r.some((r) => r === 'admin' || r === 'import' || r === 'loans')) {
+          return sendJSON(res, 401, { error: 'unauthorized' });
+        }
         const chunks: Buffer[] = [];
         let size = 0;
         await new Promise<void>((resolve, reject) => {
@@ -132,6 +253,98 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
       } catch (e: any) {
         return sendJSON(res, 400, { error: 'write_state_failed', message: e?.message || String(e) });
       }
+    })();
+    return;
+  }
+
+  // --- Auth endpoints ---
+  if (url.pathname === '/api/auth/me') {
+    (async () => {
+      const cookies = parseCookies(req);
+      const token = cookies['bm2_auth'] || '';
+      const claims = token ? await verifyToken(token) : null;
+      if (!claims) return sendJSON(res, 200, { user: null, roles: ['guest'] });
+      return sendJSON(res, 200, { user: { username: claims.u }, roles: claims.r });
+    })();
+    return;
+  }
+  if (method === 'POST' && url.pathname === '/api/auth/login') {
+    (async () => {
+      try {
+        const chunks: Buffer[] = [];
+        await new Promise<void>((resolve, reject) => { req.on('data', (c) => chunks.push(c as Buffer)); req.on('end', resolve); req.on('error', reject); });
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
+        const username = String(body.username || '').trim();
+        const password = String(body.password || '');
+        if (!username || !password) return sendJSON(res, 400, { error: 'missing_credentials' });
+        const users = await readUsers();
+        const u = users.find((x) => x.username === username);
+        if (!u || !(await verifyPassword(u.pass, password))) return sendJSON(res, 401, { error: 'invalid_credentials' });
+        const exp = Math.floor(Date.now() / 1000) + (60 * 60 * 12); // 12h
+        const token = await signToken({ u: u.username, r: Array.isArray(u.roles) ? u.roles : [], exp });
+        setCookie(res, 'bm2_auth', token, { httpOnly: true, sameSite: 'Lax', maxAge: 60 * 60 * 12 });
+        return sendJSON(res, 200, { ok: true });
+      } catch (e: any) {
+        return sendJSON(res, 400, { error: 'login_failed', message: e?.message || String(e) });
+      }
+    })();
+    return;
+  }
+  if (method === 'POST' && url.pathname === '/api/auth/logout') {
+    clearCookie(res, 'bm2_auth');
+    return sendJSON(res, 200, { ok: true });
+  }
+  // Users management (admin only)
+  if (url.pathname.startsWith('/api/users')) {
+    (async () => {
+      const cookies = parseCookies(req);
+      const token = cookies['bm2_auth'] || '';
+      const claims = token ? await verifyToken(token) : null;
+      if (!claims || !claims.r.includes('admin')) return sendJSON(res, 401, { error: 'unauthorized' });
+      const users = await readUsers();
+      if (method === 'GET' && url.pathname === '/api/users') {
+        const safe = users.map((u) => ({ username: u.username, roles: u.roles || [] }));
+        return sendJSON(res, 200, { users: safe });
+      }
+      if (method === 'POST' && url.pathname === '/api/users') {
+        const chunks: Buffer[] = [];
+        await new Promise<void>((resolve, reject) => { req.on('data', (c) => chunks.push(c as Buffer)); req.on('end', resolve); req.on('error', reject); });
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
+        const username = String(body.username || '').trim();
+        const password = String(body.password || '');
+        const roles = Array.isArray(body.roles) ? body.roles.filter((r) => typeof r === 'string') : [];
+        if (!username || !password) return sendJSON(res, 400, { error: 'missing_fields' });
+        if (users.some((u) => u.username === username)) return sendJSON(res, 409, { error: 'exists' });
+        const pass = await hashPassword(password);
+        users.push({ username, pass, roles });
+        await writeUsers(users);
+        return sendJSON(res, 200, { ok: true });
+      }
+      const m = /^\/api\/users\/([^/]+)$/.exec(url.pathname);
+      if (m) {
+        const uname = decodeURIComponent(m[1]);
+        const idx = users.findIndex((u) => u.username === uname);
+        if (idx < 0) return sendJSON(res, 404, { error: 'not_found' });
+        if (method === 'PUT') {
+          const chunks: Buffer[] = [];
+          await new Promise<void>((resolve, reject) => { req.on('data', (c) => chunks.push(c as Buffer)); req.on('end', resolve); req.on('error', reject); });
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
+          if (typeof body.password === 'string' && body.password) {
+            users[idx].pass = await hashPassword(body.password);
+          }
+          if (Array.isArray(body.roles)) {
+            users[idx].roles = body.roles.filter((r: any) => typeof r === 'string');
+          }
+          await writeUsers(users);
+          return sendJSON(res, 200, { ok: true });
+        }
+        if (method === 'DELETE') {
+          users.splice(idx, 1);
+          await writeUsers(users);
+          return sendJSON(res, 200, { ok: true });
+        }
+      }
+      return sendJSON(res, 405, { error: 'method_not_allowed' });
     })();
     return;
   }

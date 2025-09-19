@@ -1,13 +1,14 @@
 {
   "books": [
     {
-      "id": 1758265152059,
-      "epc": "9879CCAFA1DD5751BA42C44B",
-      "title": "Test",
-      "author": "de",
+      "id": 1758266264951,
+      "epc": "D123AA32D3F48A6B5CD86C17",
+      "title": "Les Misérables",
+      "author": "Victor Hugo",
       "read": false,
-      "createdAt": 1758265152059,
-      "barcode": "3662168013499"
+      "createdAt": 1758266264951,
+      "isbn": "9780241248744",
+      "coverUrl": "/covers/isbn/9780241248744?s=M"
     },
     {
       "id": 1758264389678,
@@ -31,6 +32,13 @@
     }
   ],
   "loans": [
+    {
+      "id": 1758284182456,
+      "bookId": 1758196787687,
+      "borrower": "Test",
+      "startDate": "2025-09-18",
+      "dueDate": "2025-09-18"
+    },
     {
       "id": 1758265202681,
       "bookId": 1758265152059,

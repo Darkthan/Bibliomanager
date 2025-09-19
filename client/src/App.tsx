@@ -24,6 +24,15 @@ type Loan = {
 
 export function App() {
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
+  // Auth (roles cumulables)
+  type Me = { username: string | null; roles: string[] };
+  const [me, setMe] = useState<Me>({ username: null, roles: ['guest'] });
+  function hasRole(role: 'admin' | 'import' | 'loans') {
+    return me.roles.includes('admin') || me.roles.includes(role);
+  }
+  const canImport = hasRole('import');
+  const canLoans = hasRole('loans');
+  const isAdmin = me.roles.includes('admin');
   const [books, setBooks] = useState<Book[]>([]);
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
@@ -120,6 +129,16 @@ export function App() {
   useEffect(() => { probeAgent(); }, []);
   useEffect(() => { try { const v = localStorage.getItem('bm2/agentPrinter'); if (v) setAgentPrinterName(v); } catch {} }, []);
   useEffect(() => { try { localStorage.setItem('bm2/agentPrinter', agentPrinterName); } catch {} }, [agentPrinterName]);
+  // Récupère la session
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch('/api/auth/me', { cache: 'no-store' });
+        const d = await r.json();
+        if (d && Array.isArray(d.roles)) setMe({ username: d?.user?.username || null, roles: d.roles });
+      } catch {}
+    })();
+  }, []);
   useEffect(() => {
     (async () => {
       if (!agentAvailable) return;
@@ -361,6 +380,18 @@ export function App() {
     if (to === route) return;
     window.history.pushState({}, '', to);
     setRoute(to);
+  }
+  async function login(username: string, password: string) {
+    const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+    if (!r.ok) throw new Error('Identifiants invalides');
+    const meR = await fetch('/api/auth/me', { cache: 'no-store' });
+    const d = await meR.json();
+    setMe({ username: d?.user?.username || null, roles: Array.isArray(d.roles) ? d.roles : ['guest'] });
+  }
+  async function logout() {
+    try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
+    setMe({ username: null, roles: ['guest'] });
+    if (route !== '/livres/disponibles') navigate('/livres/disponibles');
   }
   const isAddDisabled = useMemo(() => title.trim().length === 0 || author.trim().length === 0, [title, author]);
 
@@ -1413,6 +1444,109 @@ export function App() {
     );
   }
 
+  function LoginForm({ onSubmit }: { onSubmit: (u: string, p: string) => Promise<void> }) {
+    const [u, setU] = useState('');
+    const [p, setP] = useState('');
+    const [err, setErr] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
+    return (
+      <form onSubmit={async (e) => { e.preventDefault(); setErr(null); setLoading(true); try { await onSubmit(u, p); } catch (e: any) { setErr(e?.message || 'Erreur de connexion'); } finally { setLoading(false); } }} style={{ display: 'grid', gap: 10 }}>
+        <input aria-label="Nom d'utilisateur" placeholder="Nom d'utilisateur" value={u} onChange={(e) => setU(e.target.value)} style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }} />
+        <input aria-label="Mot de passe" type="password" placeholder="Mot de passe" value={p} onChange={(e) => setP(e.target.value)} style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }} />
+        {err && <div style={{ color: '#8A1F12', fontSize: 14 }}>{err}</div>}
+        <button type="submit" disabled={loading || !u || !p} style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #2563eb', background: loading ? '#93c5fd' : '#3b82f6', color: 'white' }}>{loading ? 'Connexion…' : 'Se connecter'}</button>
+      </form>
+    );
+  }
+
+  function UsersAdmin() {
+    const [users, setUsers] = useState<Array<{ username: string; roles: string[] }>>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [newUser, setNewUser] = useState({ username: '', password: '', admin: false, import: false, loans: false } as any);
+    useEffect(() => { (async () => {
+      try { setLoading(true); const r = await fetch('/api/users'); const d = await r.json(); setUsers(Array.isArray(d.users) ? d.users : []); }
+      catch (e: any) { setError(e?.message || 'Erreur'); }
+      finally { setLoading(false); }
+    })(); }, []);
+    async function refresh() {
+      try { const r = await fetch('/api/users'); const d = await r.json(); setUsers(Array.isArray(d.users) ? d.users : []); } catch {}
+    }
+    async function createUser() {
+      const roles = [newUser.admin && 'admin', newUser.import && 'import', newUser.loans && 'loans'].filter(Boolean) as string[];
+      const r = await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: newUser.username.trim(), password: newUser.password, roles }) });
+      if (!r.ok) { alert('Création échouée'); return; }
+      setNewUser({ username: '', password: '', admin: false, import: false, loans: false });
+      await refresh();
+    }
+    async function updateRoles(username: string, roles: string[]) {
+      const r = await fetch(`/api/users/${encodeURIComponent(username)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roles }) });
+      if (!r.ok) alert('Mise à jour échouée'); else await refresh();
+    }
+    async function updatePassword(username: string) {
+      const p = prompt("Nouveau mot de passe pour " + username);
+      if (!p) return;
+      const r = await fetch(`/api/users/${encodeURIComponent(username)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: p }) });
+      if (!r.ok) alert('Changement de mot de passe échoué');
+    }
+    async function remove(username: string) {
+      if (!confirm('Supprimer le compte ' + username + ' ?')) return;
+      const r = await fetch(`/api/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+      if (!r.ok) alert('Suppression échouée'); else await refresh();
+    }
+    return (
+      <div style={{ display: 'grid', gap: 12 }}>
+        {loading ? <div>Chargement…</div> : error ? <div style={{ color: '#8A1F12' }}>{error}</div> : (
+          <>
+            <div>
+              <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Utilisateurs</div>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
+                {users.map((u) => (
+                  <li key={u.username} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10, display: 'grid', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <strong>{u.username}</strong>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button type="button" onClick={() => updatePassword(u.username)} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Changer mot de passe</button>
+                        <button type="button" onClick={() => remove(u.username)} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #ef4444', background: '#ef4444', color: 'white' }}>Supprimer</button>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                      {(['admin','import','loans'] as const).map((r) => {
+                        const checked = u.roles.includes(r);
+                        return (
+                          <label key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <input type="checkbox" checked={checked} onChange={(e) => {
+                              const next = new Set(u.roles);
+                              if (e.target.checked) next.add(r); else next.delete(r);
+                              updateRoles(u.username, Array.from(next));
+                            }} /> {r}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Créer un compte</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <input placeholder="Nom d'utilisateur" value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }} />
+                <input placeholder="Mot de passe" type="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }} />
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={!!newUser.admin} onChange={(e) => setNewUser({ ...newUser, admin: e.target.checked })} /> admin</label>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={!!newUser.import} onChange={(e) => setNewUser({ ...newUser, import: e.target.checked })} /> import</label>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={!!newUser.loans} onChange={(e) => setNewUser({ ...newUser, loans: e.target.checked })} /> loans</label>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <button type="button" onClick={createUser} disabled={!newUser.username || !newUser.password} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>Créer</button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
   const availableBooks = useMemo(() => {
     const activeIds = new Set(loans.filter((l) => !loanUtils.isReturned(l)).map((l) => l.bookId));
     const q = query.trim().toLowerCase();
@@ -1498,6 +1632,7 @@ export function App() {
           </button>
           <h1 style={{ margin: 0 }}>Bibliomanager2</h1>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <button
           type="button"
           aria-label="Paramètres"
@@ -1521,16 +1656,27 @@ export function App() {
             <path d="M19.4 12.98c.04-.32.06-.65.06-.98 0-.33-.02-.66-.06-.98l2.01-1.57a.5.5 0 0 0 .12-.64l-1.9-3.29a.5.5 0 0 0-.6-.22l-2.37.95a7.63 7.63 0 0 0-1.7-.98l-.36-2.52a.5.5 0 0 0-.5-.43h-3.8a.5.5 0 0 0-.5.43l-.36 2.52c-.6.24-1.17.56-1.7.98l-2.37-.95a.5.5 0 0 0-.6.22L2.47 6.8a.5.5 0 0 0 .12.64L4.6 9.01c-.04.32-.06.65-.06.99 0 .33.02.66.06.98l-2.01 1.57a.5.5 0 0 0-.12.64l1.9 3.29c.13.23.4.32.64.22l2.37-.95c.52.42 1.1.75 1.7.99l.36 2.52c.05.25.26.43.5.43h3.8c.24 0 .45-.18.5-.43l.36-2.52c.6-.24 1.17-.57 1.7-.99l2.37.95c.24.1.51 0 .64-.22l1.9-3.29a.5.5 0 0 0-.12-.64l-2.01-1.57Z" stroke="currentColor" strokeWidth="1.5"/>
           </svg>
         </button>
+        {me.username ? (
+          <button type="button" onClick={logout} title={`Déconnexion (${me.username})`} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)', cursor: 'pointer' }}>
+            Se déconnecter
+          </button>
+        ) : (
+          <button type="button" onClick={() => navigate('/connexion')} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--panel)', cursor: 'pointer' }}>
+            Se connecter
+          </button>
+        )}
+        </div>
       </header>
 
       {route !== '/' && (
         <nav className={`main-nav${navOpen ? ' is-open' : ''}`} aria-label="Navigation principale" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {[
-            { to: '/livres/disponibles', label: 'Livres disponibles' },
-            { to: '/livres/nouveau', label: 'Ajouter un livre' },
-            { to: '/import', label: 'Import en masse' },
-            { to: '/prets', label: 'Prêts' },
-          ].map((item) => (
+            { to: '/livres/disponibles', label: 'Livres disponibles', show: true },
+            { to: '/livres/nouveau', label: 'Ajouter un livre', show: canImport },
+            { to: '/import', label: 'Import en masse', show: canImport },
+            { to: '/prets', label: 'Prêts', show: canLoans },
+            { to: '/comptes', label: 'Comptes', show: isAdmin },
+          ].filter((i) => i.show).map((item) => (
             <a
               key={item.to}
               href={item.to}
@@ -1739,9 +1885,23 @@ export function App() {
         </section>
       )}
 
+      {route === '/connexion' && (
+        <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8, maxWidth: 460 }}>
+          <h2 style={{ marginTop: 0 }}>Connexion</h2>
+          {me.username ? (
+            <p style={{ color: 'var(--muted)' }}>Connecté en tant que <strong>{me.username}</strong>.</p>
+          ) : (
+            <LoginForm onSubmit={async (u, p) => { await login(u, p); navigate('/livres/disponibles'); }} />
+          )}
+        </section>
+      )}
+
       {route === '/livres/nouveau' && (
       <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}>
         <h2 style={{ marginTop: 0 }}>Ajouter un livre</h2>
+        {!canImport && (
+          <p style={{ color: 'var(--muted)' }}>Accès restreint. Connectez-vous avec un profil Administration ou Import/Ajouts.</p>
+        )}
         <div className="add-form-wrapper" style={{ marginBottom: 12 }}>
           <input
             aria-label="Rechercher un livre (ISBN, code-barres, titre, auteur)"
@@ -2279,6 +2439,10 @@ export function App() {
       {route === '/prets' && (
       <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}>
         <h2 style={{ marginTop: 0 }}>Prêts</h2>
+        {!canLoans && (
+          <p style={{ color: 'var(--muted)' }}>Accès restreint. Veuillez vous connecter avec un profil autorisé (Administration ou Gestion des prêts).</p>
+        )}
+        {canLoans && (
         <div className="panel" style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 12 }}>
           <div className="panel-title" style={{ fontWeight: 700, marginBottom: 12 }}>Nouveau prêt</div>
         <form className="loan-form form-grid"
@@ -2520,12 +2684,16 @@ export function App() {
 
         <LoansList />
         </div>
+        )}
       </section>
       )}
 
       {route === '/import' && (
       <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}>
         <h2 style={{ marginTop: 0 }}>Import en masse</h2>
+        {!canImport && (
+          <p style={{ color: 'var(--muted)' }}>Accès restreint. Connectez-vous avec un profil Administration ou Import/Ajouts.</p>
+        )}
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <button
             type="button"
@@ -2694,6 +2862,17 @@ export function App() {
           </ul>
         )}
       </section>
+      )}
+
+      {route === '/comptes' && (
+        <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}>
+          <h2 style={{ marginTop: 0 }}>Comptes</h2>
+          {!isAdmin ? (
+            <p style={{ color: 'var(--muted)' }}>Accès réservé aux administrateurs.</p>
+          ) : (
+            <UsersAdmin />
+          )}
+        </section>
       )}
     </main>
   );
