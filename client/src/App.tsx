@@ -45,6 +45,18 @@ export function App() {
   const [editingBookId, setEditingBookId] = useState<number | null>(null);
   const [loanListQuery, setLoanListQuery] = useState('');
   const [route, setRoute] = useState('/livres/disponibles');
+  // Scan (prêts): recherche livre par QR (EPC) / code-barres (ISBN)
+  const [loanScanOpen, setLoanScanOpen] = useState(false);
+  const [loanScanError, setLoanScanError] = useState<string | null>(null);
+  const [loanIsScanning, setLoanIsScanning] = useState(false);
+  const loanVideoRef = React.useRef<HTMLVideoElement | null>(null);
+  const loanStreamRef = React.useRef<MediaStream | null>(null);
+  const loanDetectorRef = React.useRef<any | null>(null);
+  const loanLoopRef = React.useRef<number | null>(null);
+  const loanZxingReaderRef = React.useRef<any | null>(null);
+  const loanZxingControlsRef = React.useRef<any | null>(null);
+  // Sélection pour impression en masse (sur "Tous les livres")
+  const [selectedForPrint, setSelectedForPrint] = useState<Set<number>>(new Set());
   // Suggestions pour l'ajout (base ouverte)
   const [addQuery, setAddQuery] = useState('');
   const [showAddSuggestions, setShowAddSuggestions] = useState(false);
@@ -176,6 +188,22 @@ export function App() {
       if (!r.ok) { r = await fetch('http://127.0.0.1:9110/print', payload); }
       if (!r.ok) throw new Error('Agent répond en erreur');
       alert("Étiquette envoyée à l'agent local.");
+    } catch (e: any) {
+      alert('Erreur agent local: ' + (e?.message || 'inconnue'));
+    }
+  }
+
+  // Impression en masse via agent local Zebra (un seul job ZPL)
+  async function printBatchViaLocalAgent(ids: number[]) {
+    const items = books.filter((b) => ids.includes(b.id));
+    if (items.length === 0) { alert('Sélectionnez au moins un livre.'); return; }
+    const zpl = items.map((b) => buildZplLabel(b, printerDpi)).join('');
+    const payload = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ zpl, printer: agentPrinterName || undefined }), mode: 'cors' as const };
+    try {
+      let r = await fetch('http://localhost:9110/print', payload);
+      if (!r.ok) { r = await fetch('http://127.0.0.1:9110/print', payload); }
+      if (!r.ok) throw new Error('Agent répond en erreur');
+      alert(items.length + (items.length > 1 ? ' étiquettes envoyées à l\'agent local.' : ' étiquette envoyée à l\'agent local.'));
     } catch (e: any) {
       alert('Erreur agent local: ' + (e?.message || 'inconnue'));
     }
@@ -327,6 +355,11 @@ export function App() {
       .then(() => setStatus('ok'))
       .catch(() => setStatus('error'));
   }, []);
+
+  // Stop scan caméra si on quitte les prêts
+  useEffect(() => {
+    if (route !== '/prets') stopLoanCameraScan();
+  }, [route]);
 
   // Persistence: load once (server first, fallback to localStorage)
   useEffect(() => {
@@ -594,6 +627,112 @@ export function App() {
     return '';
   }
 
+  // Trouve un livre par code scanné (EPC, ISBN, ou code-barres)
+  function findBookByScannedCode(raw: string): Book | null {
+    let s = String(raw || '').trim();
+    const m = /^LA,([0-9A-Fa-f]{24})$/.exec(s);
+    if (m) s = m[1];
+    if (/^[0-9A-Fa-f]{24}$/.test(s)) {
+      const epc = s.toUpperCase();
+      const b = books.find((x) => x.epc === epc);
+      if (b) return b;
+    }
+    const digits = s.replace(/\D/g, '');
+    if (digits.length === 13 && (digits.startsWith('978') || digits.startsWith('979'))) {
+      const b = books.find((x) => (x.isbn || '').replace(/\D/g, '') === digits);
+      if (b) return b;
+    }
+    if (digits) {
+      const b = books.find((x) => (x.barcode || '').replace(/\D/g, '') === digits);
+      if (b) return b;
+    }
+    return null;
+  }
+
+  function applyScannedToLoan(raw: string) {
+    const b = findBookByScannedCode(raw);
+    if (b) {
+      selectLoanBook(b);
+      return true;
+    }
+    setLoanBookQuery(String(raw).trim());
+    setShowBookSuggestions(true);
+    setHighlightIndex(0);
+    return false;
+  }
+
+  async function startLoanCameraScan() {
+    try {
+      setLoanScanError(null);
+      if ('BarcodeDetector' in window) {
+        // @ts-expect-error
+        const Detector = (window as any).BarcodeDetector;
+        loanDetectorRef.current = new Detector({ formats: ['qr_code', 'ean_13'] });
+        const constraints: MediaStreamConstraints = { video: { facingMode: 'environment' }, audio: false } as any;
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        loanStreamRef.current = stream;
+        if (loanVideoRef.current) {
+          loanVideoRef.current.srcObject = stream;
+          await loanVideoRef.current.play().catch(() => {});
+        }
+        setLoanIsScanning(true);
+        const loop = async () => {
+          if (!loanIsScanning || !loanVideoRef.current || !loanDetectorRef.current) return;
+          try {
+            const results = await loanDetectorRef.current.detect(loanVideoRef.current);
+            for (const r of results || []) {
+              const val = String(r.rawValue || '').trim();
+              if (val) {
+                const ok = applyScannedToLoan(val);
+                if (ok) { await stopLoanCameraScan(); return; }
+              }
+            }
+          } catch {}
+          loanLoopRef.current = requestAnimationFrame(loop);
+        };
+        loanLoopRef.current = requestAnimationFrame(loop);
+        return;
+      }
+      await startLoanZxingScan();
+    } catch (e: any) {
+      setLoanScanError(e?.message || 'Impossible de démarrer la caméra');
+    }
+  }
+
+  async function startLoanZxingScan() {
+    const mod = await import('https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.4/+esm');
+    const { BrowserMultiFormatReader } = mod as any;
+    const reader = new BrowserMultiFormatReader();
+    loanZxingReaderRef.current = reader;
+    setLoanIsScanning(true);
+    const controls = await reader.decodeFromVideoDevice(
+      undefined,
+      loanVideoRef.current!,
+      (result: any) => {
+        if (result) {
+          const txt = String(result.getText ? result.getText() : result.text || '').trim();
+          if (txt) {
+            const ok = applyScannedToLoan(txt);
+            if (ok) { stopLoanCameraScan().catch(() => {}); }
+          }
+        }
+      }
+    );
+    loanZxingControlsRef.current = controls;
+  }
+
+  async function stopLoanCameraScan() {
+    setLoanIsScanning(false);
+    if (loanLoopRef.current) cancelAnimationFrame(loanLoopRef.current);
+    loanLoopRef.current = null;
+    if (loanVideoRef.current) { try { loanVideoRef.current.pause(); } catch {}; loanVideoRef.current.srcObject = null; }
+    if (loanStreamRef.current) { for (const t of loanStreamRef.current.getTracks()) t.stop(); }
+    loanStreamRef.current = null;
+    try { if (loanZxingControlsRef.current?.stop) loanZxingControlsRef.current.stop(); } catch {}
+    try { if (loanZxingReaderRef.current?.reset) loanZxingReaderRef.current.reset(); } catch {}
+    loanZxingControlsRef.current = null;
+    loanZxingReaderRef.current = null;
+  }
   // Auto-renseigner ISBN à partir du code-barres si possible
   useEffect(() => {
     if (!isbn && barcode) {
@@ -755,6 +894,46 @@ export function App() {
           else { go(); }
         })();
       </script>
+    </body></html>`;
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    try { w.focus(); } catch {}
+  }
+
+  // Impression A4 en masse: grille de labels 44×19 mm
+  async function printBatchA4(ids: number[]) {
+    const items = books.filter((b) => ids.includes(b.id));
+    if (items.length === 0) { alert('Sélectionnez au moins un livre.'); return; }
+    // Générer les QR en série
+    const labeled = await Promise.all(items.map(async (b) => ({ b, qr: await genQrDataUrl(b.epc, 240) })));
+    const w = window.open('', '_blank', 'width=1100,height=800');
+    if (!w) return;
+    const cells = labeled.map(({ b, qr }) => {
+      const title = (b.title || '').replace(/</g, '&lt;');
+      const author = (b.author || '').replace(/</g, '&lt;');
+      return `<div class="label"><img class="qr" src="${qr}" alt="QR" /><div class="text"><div class="title">${title}</div><div class="author">${author}</div></div></div>`;
+    }).join('');
+    const html = `<!DOCTYPE html>
+    <html lang="fr"><head><meta charset="utf-8" />
+    <title>Étiquettes (${items.length})</title>
+    <style>
+      @page { size: A4; margin: 8mm; }
+      @media print { body { margin: 0; } .no-print { display: none; } }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+      .sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(44mm, 44mm)); gap: 2mm 4mm; align-content: start; }
+      .label { box-sizing: border-box; width: 44mm; height: 19mm; padding: 1.5mm; display: flex; align-items: center; gap: 2mm; border: 1px dashed transparent; }
+      .qr { width: 16mm; height: 16mm; }
+      .text { flex: 1; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+      .title { font-weight: 700; font-size: 8pt; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .author { font-size: 7pt; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .toolbar.no-print { position: sticky; top: 0; background: #fff; padding: 8px 0; margin-bottom: 8px; border-bottom: 1px solid #eee; }
+      button { padding: 8px 12px; border: 1px solid #111; background: #fff; border-radius: 8px; cursor: pointer; }
+    </style>
+    </head><body>
+      <div class="toolbar no-print"><button onclick="window.print()">Imprimer</button></div>
+      <div class="sheet">${cells}</div>
+      <script>setTimeout(function(){ try{ window.focus(); window.print(); }catch(e){} }, 200);</script>
     </body></html>`;
     w.document.open();
     w.document.write(html);
@@ -1563,6 +1742,28 @@ export function App() {
             <option value="title">Titre (A→Z)</option>
             <option value="author">Auteur (A→Z)</option>
           </select>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => setSelectedForPrint(new Set(visibleBooks.map((b) => b.id)))} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', background: '#f9fafb' }}>Tout sélectionner</button>
+            <button type="button" onClick={() => setSelectedForPrint(new Set())} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', background: '#f9fafb' }}>Effacer sélection</button>
+            <button
+              type="button"
+              onClick={() => printBatchViaLocalAgent(Array.from(selectedForPrint))}
+              disabled={selectedForPrint.size === 0}
+              title="Imprimer des étiquettes 44×19 via l'agent USB Zebra"
+              style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #2563eb', background: selectedForPrint.size ? '#3b82f6' : '#93c5fd', color: '#fff' }}
+            >
+              Imprimer USB Zebra (lot) {selectedForPrint.size > 0 ? `(${selectedForPrint.size})` : ''}
+            </button>
+            <button
+              type="button"
+              onClick={() => printBatchA4(Array.from(selectedForPrint))}
+              disabled={selectedForPrint.size === 0}
+              title="Générer une planche A4 (grille 44×19) pour imprimante classique"
+              style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #111', background: selectedForPrint.size ? '#111' : '#aaa', color: '#fff' }}
+            >
+              Imprimer A4 (lot) {selectedForPrint.size > 0 ? `(${selectedForPrint.size})` : ''}
+            </button>
+          </div>
         </div>
         {visibleBooks.length === 0 ? (
           <p>Aucun livre correspondant. Ajoutez-en un ci-dessus ou modifiez le filtre.</p>
@@ -1582,6 +1783,18 @@ export function App() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+                  <input
+                    type="checkbox"
+                    aria-label="Sélectionner pour impression"
+                    checked={selectedForPrint.has(b.id)}
+                    onChange={(e) => {
+                      setSelectedForPrint((prev) => {
+                        const n = new Set(prev);
+                        if (e.target.checked) n.add(b.id); else n.delete(b.id);
+                        return n;
+                      });
+                    }}
+                  />
                   {b.isbn || b.coverUrl ? (
                     <img src={b.isbn ? `/covers/isbn/${b.isbn}?s=S` : (b.coverUrl as string)} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
                   ) : (
@@ -1589,12 +1802,6 @@ export function App() {
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <input
-                      type="checkbox"
-                      checked={b.read}
-                      onChange={() => toggleRead(b.id)}
-                      aria-label={b.read ? 'Marquer comme à lire' : 'Marquer comme lu'}
-                    />
                     {editingBookId === b.id ? (
                       <input
                         value={b.title}
@@ -1901,6 +2108,43 @@ export function App() {
               }}
               style={{ width: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
             />
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (loanIsScanning) { await stopLoanCameraScan(); setLoanScanOpen(false); }
+                  else { setLoanScanOpen(true); await startLoanCameraScan(); }
+                }}
+                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #2563eb', background: loanIsScanning ? '#ef4444' : '#3b82f6', color: 'white' }}
+              >
+                {loanIsScanning ? 'Arrêter caméra' : 'Scanner (caméra)'}
+              </button>
+              <input
+                aria-label="Saisie lecteur (USB)"
+                placeholder="Scanner ici (USB)…"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const v = (e.currentTarget.value || '').trim();
+                    if (v) applyScannedToLoan(v);
+                    e.currentTarget.value = '';
+                  }
+                }}
+                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #ddd', minWidth: 200 }}
+              />
+              {loanScanError && <span style={{ color: '#8A1F12' }}>{loanScanError}</span>}
+            </div>
+            {loanScanOpen && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ position: 'relative', width: 'min(520px, 100%)' }}>
+                  <video ref={loanVideoRef} muted playsInline style={{ width: '100%', borderRadius: 12, border: '1px solid #e5e7eb', background: '#000' }} />
+                  <div style={{ position: 'absolute', inset: 0, border: '2px dashed rgba(255,255,255,0.6)', borderRadius: 12, pointerEvents: 'none' }} />
+                </div>
+                <small style={{ color: '#666' }}>
+                  QR (EPC) et EAN-13 (ISBN) supportés. Utilise BarcodeDetector ou ZXing en secours.
+                </small>
+              </div>
+            )}
             {showBookSuggestions && loanBookQuery.trim() !== '' && bookSuggestions.length > 0 && (
               <ul
                 role="listbox"
