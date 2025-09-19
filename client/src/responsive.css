@@ -25,12 +25,33 @@
 }
 
 /* Loan form: switch from 5 columns to 2, then 1 */
-.loan-form { grid-template-columns: 2fr 2fr 1fr 1fr auto !important; }
+.loan-form { display: grid !important; grid-template-columns: 3fr 2fr 1fr 1fr min-content; gap: 12px; align-items: end; }
+.loan-form .field { display: flex; flex-direction: column; min-width: 0; }
+.loan-form .f-book { grid-column: 1 / 2; }
+.loan-form .f-borrower { grid-column: 2 / 3; }
+.loan-form .f-start { grid-column: 3 / 4; }
+.loan-form .f-due { grid-column: 4 / 5; }
+.loan-form .f-submit { grid-column: 5 / 6; justify-self: end; }
+.loan-form .f-submit button { white-space: nowrap; }
+@media (max-width: 1200px) {
+  .loan-form { grid-template-columns: 2fr 2fr 1fr 1fr; }
+  .loan-form .f-submit { grid-column: 1 / -1; justify-self: stretch; }
+}
 @media (max-width: 1024px) {
-  .loan-form { grid-template-columns: 1fr 1fr !important; }
+  .loan-form { grid-template-columns: 1fr 1fr; }
+  .loan-form .f-book { grid-column: 1 / -1; }
+  .loan-form .f-borrower { grid-column: 1 / -1; }
+  .loan-form .f-start { grid-column: 1 / 2; }
+  .loan-form .f-due { grid-column: 2 / 3; }
+  .loan-form .f-submit { grid-column: 1 / -1; justify-self: stretch; }
 }
 @media (max-width: 640px) {
-  .loan-form { grid-template-columns: 1fr !important; }
+  .loan-form { grid-template-columns: 1fr; }
+  .loan-form .f-book,
+  .loan-form .f-borrower,
+  .loan-form .f-start,
+  .loan-form .f-due,
+  .loan-form .f-submit { grid-column: 1 / -1; }
 }
 
 /* Panels and common elements */

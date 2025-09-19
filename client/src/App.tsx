@@ -2169,14 +2169,15 @@ export function App() {
         <h2 style={{ marginTop: 0 }}>Prêts</h2>
         <div className="panel" style={{ padding: 16, border: '1px solid #eee', borderRadius: 12 }}>
           <div className="panel-title" style={{ fontWeight: 700, marginBottom: 12 }}>Nouveau prêt</div>
-        <form
+        <form className="loan-form form-grid"
           onSubmit={(e) => {
             e.preventDefault();
             addLoan();
           }}
-          style={{ display: 'grid', gap: 12, gridTemplateColumns: '2fr 2fr 1fr 1fr auto' }}
+          style={{}}
         >
-          <div style={{ position: 'relative' }}>
+          <div className="field f-book" style={{ position: 'relative' }}>
+            <label style={{ fontSize: 12, color: '#555', marginBottom: 4 }}>Livre</label>
             <input
               aria-label="Livre (ISBN / code-barres / titre / auteur)"
               placeholder="Rechercher un livre…"
@@ -2303,27 +2304,37 @@ export function App() {
               </ul>
             )}
           </div>
-          <input
+          <div className="field f-borrower">
+            <label style={{ fontSize: 12, color: '#555', marginBottom: 4 }}>Emprunteur</label>
+            <input
             aria-label="Emprunteur"
             placeholder="Nom de l'emprunteur"
             value={loanBorrower}
             onChange={(e) => setLoanBorrower(e.target.value)}
             style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
           />
-          <input
+          </div>
+          <div className="field f-start">
+            <label style={{ fontSize: 12, color: '#555', marginBottom: 4 }}>Début</label>
+            <input
             type="date"
             aria-label="Date de début"
             value={loanStartDate}
             onChange={(e) => setLoanStartDate(e.target.value)}
             style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
           />
-          <input
+          </div>
+          <div className="field f-due">
+            <label style={{ fontSize: 12, color: '#555', marginBottom: 4 }}>Échéance</label>
+            <input
             type="date"
             aria-label="Date d'échéance"
             value={loanDueDate}
             onChange={(e) => setLoanDueDate(e.target.value)}
             style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
           />
+          </div>
+          <div className="field f-submit">
           <button
             type="submit"
             disabled={!loanBookId || loanBorrower.trim() === ''}
@@ -2338,6 +2349,7 @@ export function App() {
           >
             Enregistrer le prêt
           </button>
+          </div>
         </form>
         {loanBookId && (
           <div className="book-preview" style={{ marginTop: 8, display: 'flex', gap: 12, alignItems: 'center' }}>
