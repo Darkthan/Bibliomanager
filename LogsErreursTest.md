@@ -1,29 +1,18 @@
-PS C:\Users\lducreux.PEDAGO\Documents\DevProjects\Bibliomanager2> npm run build
-
-> bibliomanager2@0.0.6 build
-> npm run build:server && npm run build:client
-
-> bibliomanager2@0.0.6 build:server
-> tsc -p tsconfig.json
-
-> bibliomanager2@0.0.6 build:client
-> vite build --config client/vite.config.ts
-
 vite v7.1.5 building for production...
-✓ 3 modules transformed.
-✗ Build failed in 64ms
+✓ 4 modules transformed.
+✗ Build failed in 76ms
 error during build:
 [vite:esbuild] Transform failed with 1 error:
-C:/Users/lducreux.PEDAGO/Documents/DevProjects/Bibliomanager2/client/src/App.tsx:2392:14: ERROR: Unterminated regular expression
-file: C:/Users/lducreux.PEDAGO/Documents/DevProjects/Bibliomanager2/client/src/App.tsx:2392:14
+C:/Users/lducreux.PEDAGO/Documents/DevProjects/Bibliomanager2/client/src/App.tsx:2073:9: ERROR: The character "}" is not valid inside a JSX element
+file: C:/Users/lducreux.PEDAGO/Documents/DevProjects/Bibliomanager2/client/src/App.tsx:2073:9
 
-Unterminated regular expression
-2390 |              })}
-2391 |            </ul>
-2392 |          </div>
-     |                ^
-2393 |          )}
-2394 |        </section>
+The character "}" is not valid inside a JSX element
+2071 |            </p>
+2072 |          )}
+2073 |          )}
+     |           ^
+2074 |        </section>
+2075 |        )}
 
     at failureErrorWithLog (C:\Users\lducreux.PEDAGO\Documents\DevProjects\Bibliomanager2\node_modules\esbuild\lib\main.js:1467:15)
     at C:\Users\lducreux.PEDAGO\Documents\DevProjects\Bibliomanager2\node_modules\esbuild\lib\main.js:736:50
