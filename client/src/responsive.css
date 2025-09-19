@@ -15,6 +15,15 @@
   .main-nav a { flex-basis: 48%; min-width: 140px; }
 }
 
+/* Hamburger menu behavior */
+.hamburger { display: none !important; }
+@media (max-width: 820px) {
+  .hamburger { display: inline-block !important; }
+  /* Collapse nav by default on small screens */
+  .main-nav { display: none !important; flex-direction: column !important; gap: 8px !important; }
+  .main-nav.is-open { display: flex !important; }
+}
+
 /* Loan form: switch from 5 columns to 2, then 1 */
 .loan-form { grid-template-columns: 2fr 2fr 1fr 1fr auto !important; }
 @media (max-width: 1024px) {
@@ -32,8 +41,12 @@
   .book-actions button { flex: 0 1 auto; }
 }
 
+/* Hide print actions on tablet/phone to save space */
+@media (max-width: 1024px) {
+  .print-action { display: none !important; }
+}
+
 /* Available books grid already responsive; ensure tile min width is manageable on phones */
 @media (max-width: 400px) {
   /* no-op placeholder for future fine-tuning */
 }
-

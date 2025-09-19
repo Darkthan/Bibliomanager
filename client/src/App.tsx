@@ -46,6 +46,8 @@ export function App() {
   const [editingBookId, setEditingBookId] = useState<number | null>(null);
   const [loanListQuery, setLoanListQuery] = useState('');
   const [route, setRoute] = useState('/livres/disponibles');
+  // Menu responsive (hamburger)
+  const [navOpen, setNavOpen] = useState(false);
   // Scan (prêts): recherche livre par QR (EPC) / code-barres (ISBN)
   const [loanScanOpen, setLoanScanOpen] = useState(false);
   const [loanScanError, setLoanScanError] = useState<string | null>(null);
@@ -1391,7 +1393,21 @@ export function App() {
       }}
     >
       <header className="app-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 style={{ margin: 0 }}>Bibliomanager2</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            type="button"
+            className="hamburger"
+            aria-label="Menu"
+            aria-expanded={navOpen}
+            onClick={() => setNavOpen((v) => !v)}
+            style={{ display: 'none', width: 40, height: 40, borderRadius: 8, border: '1px solid #ddd', background: '#fff' }}
+          >
+            <span style={{ display: 'block', width: 20, height: 2, background: '#111', margin: '0 auto 4px' }} />
+            <span style={{ display: 'block', width: 20, height: 2, background: '#111', margin: '0 auto 4px' }} />
+            <span style={{ display: 'block', width: 20, height: 2, background: '#111', margin: '0 auto' }} />
+          </button>
+          <h1 style={{ margin: 0 }}>Bibliomanager2</h1>
+        </div>
         <span
           aria-live="polite"
           title={status === 'loading' ? 'Vérification…' : status === 'ok' ? 'Serveur OK' : 'Serveur indisponible'}
@@ -1410,7 +1426,7 @@ export function App() {
       </header>
 
       {route !== '/' && (
-        <nav className="main-nav" aria-label="Navigation principale" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <nav className={`main-nav${navOpen ? ' is-open' : ''}`} aria-label="Navigation principale" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {[
             { to: '/livres/disponibles', label: 'Livres disponibles' },
             { to: '/livres/nouveau', label: 'Ajouter un livre' },
@@ -1420,7 +1436,7 @@ export function App() {
             <a
               key={item.to}
               href={item.to}
-              onClick={(e) => { e.preventDefault(); navigate(item.to); }}
+              onClick={(e) => { e.preventDefault(); navigate(item.to); setNavOpen(false); }}
               style={{
                 padding: '12px 16px',
                 border: '2px solid ' + (route === item.to ? '#2563eb' : '#ddd'),
@@ -1743,11 +1759,12 @@ export function App() {
             <option value="title">Titre (A→Z)</option>
             <option value="author">Auteur (A→Z)</option>
           </select>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="bulk-print-bar" style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <button type="button" onClick={() => setSelectedForPrint(new Set(visibleBooks.map((b) => b.id)))} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', background: '#f9fafb' }}>Tout sélectionner</button>
             <button type="button" onClick={() => setSelectedForPrint(new Set())} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', background: '#f9fafb' }}>Effacer sélection</button>
             <button
               type="button"
+              className="print-action"
               onClick={() => printBatchViaLocalAgent(Array.from(selectedForPrint))}
               disabled={selectedForPrint.size === 0}
               title="Imprimer des étiquettes 44×19 via l'agent USB Zebra"
@@ -1757,6 +1774,7 @@ export function App() {
             </button>
             <button
               type="button"
+              className="print-action"
               onClick={() => printBatchA4(Array.from(selectedForPrint))}
               disabled={selectedForPrint.size === 0}
               title="Générer une planche A4 (grille 44×19) pour imprimante classique"
@@ -1861,6 +1879,7 @@ export function App() {
                   <button
                     onClick={() => printViaLocalAgent(b)}
                     title="Imprimer une étiquette 44×19 via l'agent USB Zebra"
+                    className="print-action"
                     style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #2563eb', background: '#3b82f6', color: '#fff' }}
                   >
                     Imprimer (USB Zebra)
