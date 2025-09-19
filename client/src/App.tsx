@@ -1703,13 +1703,14 @@ export function App() {
             </div>
           )}
         </div>
-        <form className="loan-form"
+        <form className="add-form form-grid"
           onSubmit={(e) => {
             e.preventDefault();
             addBook();
           }}
-          style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr 1fr 1fr auto auto' }}
+          style={{}}
         >
+          <div className="field f-title">
           <input
             aria-label="Titre"
             placeholder="Titre"
@@ -1717,6 +1718,8 @@ export function App() {
             onChange={(e) => setTitle(e.target.value)}
             style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
           />
+          </div>
+          <div className="field f-author">
           <input
             aria-label="Auteur"
             placeholder="Auteur"
@@ -1724,6 +1727,8 @@ export function App() {
             onChange={(e) => setAuthor(e.target.value)}
             style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
           />
+          </div>
+          <div className="field f-isbn">
           <input
             aria-label="ISBN"
             placeholder="ISBN (10 ou 13)"
@@ -1731,6 +1736,8 @@ export function App() {
             onChange={(e) => setIsbn(e.target.value)}
             style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
           />
+          </div>
+          <div className="field f-barcode">
           <input
             aria-label="Code-barres"
             placeholder="Code-barres"
@@ -1738,6 +1745,8 @@ export function App() {
             onChange={(e) => setBarcode(e.target.value)}
             style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
           />
+          </div>
+          <div className="field f-lookup">
           <button
             type="button"
             onClick={lookupBookInfo}
@@ -1753,6 +1762,8 @@ export function App() {
           >
             {bookLookupLoading ? 'Recherche…' : 'Rechercher infos'}
           </button>
+          </div>
+          <div className="field f-submit">
           <button
             type="submit"
             disabled={isAddDisabled}
@@ -1767,15 +1778,16 @@ export function App() {
           >
             Ajouter
           </button>
+          </div>
         </form>
         {showAddSuggestions && addQuery.trim() !== '' && (
-          <ul role="listbox" style={{ zIndex: 10, background: 'white', border: '1px solid #eee', borderRadius: 10, marginTop: 8, listStyle: 'none', padding: 6, maxHeight: 260, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}>
+          <ul role="listbox" className="add-suggest" style={{ zIndex: 10, background: 'white', border: '1px solid #eee', borderRadius: 10, marginTop: 8, listStyle: 'none', padding: 6, maxHeight: 260, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}>
             {addLoading && <li style={{ padding: '8px 10px', color: '#555' }}>Recherche…</li>}
             {!addLoading && addSuggestions.length === 0 && <li style={{ padding: '8px 10px', color: '#555' }}>Aucun résultat</li>}
             {addSuggestions.map((s, idx) => (
               <li key={s.title + (s.isbn13 || s.isbn10 || idx)}>
-                <div role="option" aria-selected={idx === addHighlightIndex} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 10px', borderRadius: 8, background: idx === addHighlightIndex ? '#EFF6FF' : 'transparent' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                <div role="option" aria-selected={idx === addHighlightIndex} className="add-suggest-row" style={{ gap: 12, padding: '8px 10px', borderRadius: 8, background: idx === addHighlightIndex ? '#EFF6FF' : 'transparent' }}>
+                  <div className="add-suggest-info" style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
                     { (s.isbn13 || s.isbn10) ? (
                       <img src={`/covers/isbn/${String(s.isbn13 || s.isbn10)}?s=S`} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
                     ) : (
