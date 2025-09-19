@@ -1515,14 +1515,14 @@ export function App() {
               href={item.to}
               onClick={(e) => { e.preventDefault(); navigate(item.to); setNavOpen(false); }}
               style={{
-                padding: '12px 16px',
+                padding: 'var(--nav-pad-y, 12px) var(--nav-pad-x, 16px)',
                 border: '2px solid ' + (route === item.to ? '#2563eb' : '#ddd'),
                 background: route === item.to ? '#EFF6FF' : '#fff',
                 color: '#111',
-                borderRadius: 10,
-                minWidth: 160,
+                borderRadius: 'var(--nav-radius, 10px)',
+                minWidth: 'var(--nav-minw, 160px)',
                 textAlign: 'center',
-                fontSize: 16,
+                fontSize: 'var(--nav-font, 16px)',
               }}
             >
               {item.label}
