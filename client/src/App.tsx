@@ -2697,6 +2697,7 @@ export function App() {
           <p style={{ color: 'var(--muted)' }}>Accès restreint. Connectez-vous avec un profil Administration ou Import/Ajouts.</p>
         )}
         {canImport && (
+        <>
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <button
             type="button"
@@ -2739,6 +2740,7 @@ export function App() {
             </div>
             <small style={{ color: 'var(--muted-2)' }}>Astuce: la plupart des lecteurs USB émulent un clavier et envoient « Entrée » après la saisie.</small>
           </div>
+        </>
         )}
 
         {importMode === 'camera' && (
