@@ -1323,6 +1323,83 @@ export function App() {
       });
   }, [loans, loanFilter, books, loanListQuery]);
 
+  function LoansList() {
+    if (visibleLoans.length === 0) {
+      return <p style={{ marginTop: 12 }}>Aucun prêt à afficher.</p>;
+    }
+    return (
+      <ul style={{ listStyle: 'none', padding: 0, marginTop: 12, display: 'grid', gap: 8 }}>
+        {visibleLoans.map((l) => {
+          const book = books.find((b) => b.id === l.bookId);
+          const overdue = loanUtils.isOverdue(l);
+          const returned = loanUtils.isReturned(l);
+          const days = loanUtils.daysLeft(l);
+          return (
+            <li
+              key={l.id}
+              style={{
+                display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+                padding: '10px 12px',
+                border: '1px solid #eee',
+                borderRadius: 8,
+                background: returned ? '#f5f5f5' : overdue ? '#FDECEA' : 'white',
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{book ? book.title : 'Livre supprimé'}</div>
+                  {book && <div style={{ color: '#555', fontWeight: 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>— {book.author}</div>}
+                  <span className="chip" style={{ padding: '2px 8px', borderRadius: 999, fontSize: 12, border: '1px solid #ddd', background: returned ? '#f3f4f6' : overdue ? '#FDECEA' : '#EEF2FF', color: returned ? '#111' : overdue ? '#8A1F12' : '#1E3A8A' }}>
+                    {returned ? 'Rendu' : overdue ? 'En retard' : 'En cours'}
+                  </span>
+                </div>
+                <div style={{ color: '#555', fontSize: 14, marginTop: 2 }}>
+                  Emprunteur: <strong>{l.borrower}</strong> · {l.startDate} → {l.dueDate}
+                  {returned && l.returnedAt ? ` · Rendu le ${l.returnedAt}` : ''}
+                </div>
+                {!returned && (
+                  <div style={{ fontSize: 12, marginTop: 4, color: overdue ? '#8A1F12' : '#0E7A4D' }}>
+                    {overdue ? `En retard de ${Math.abs(days)} jour(s)` : `Il reste ${days} jour(s)`}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginLeft: 12, flexWrap: 'wrap' }}>
+                {!returned && (
+                  <button
+                    onClick={() => returnLoan(l.id)}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: 6,
+                      border: '1px solid #10b981',
+                      background: '#10b981',
+                      color: 'white',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Marquer comme rendu
+                  </button>
+                )}
+                <button
+                  onClick={() => setLoans((prev) => prev.filter((x) => x.id !== l.id))}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: 6,
+                    border: '1px solid #ef4444',
+                    background: '#ef4444',
+                    color: 'white',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Supprimer
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+
   const availableBooks = useMemo(() => {
     const activeIds = new Set(loans.filter((l) => !loanUtils.isReturned(l)).map((l) => l.bookId));
     const q = query.trim().toLowerCase();
@@ -2317,80 +2394,8 @@ export function App() {
           </span>
         </div>
 
-        {visibleLoans.length === 0 ? (
-          <p style={{ marginTop: 12 }}>Aucun prêt à afficher.</p>
-        ) : (
-          <ul style={{ listStyle: 'none', padding: 0, marginTop: 12, display: 'grid', gap: 8 }}>
-            {visibleLoans.map((l) => {
-              const book = books.find((b) => b.id === l.bookId);
-              const overdue = loanUtils.isOverdue(l);
-              const returned = loanUtils.isReturned(l);
-              const days = loanUtils.daysLeft(l);
-              return (
-                <li
-                  key={l.id}
-                  style={{
-                    display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-                    padding: '10px 12px',
-                    border: '1px solid #eee',
-                    borderRadius: 8,
-                    background: returned ? '#f5f5f5' : overdue ? '#FDECEA' : 'white',
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{book ? book.title : 'Livre supprimé'}</div>
-                      {book && <div style={{ color: '#555', fontWeight: 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>— {book.author}</div>}
-                      <span className="chip" style={{ padding: '2px 8px', borderRadius: 999, fontSize: 12, border: '1px solid #ddd', background: returned ? '#f3f4f6' : overdue ? '#FDECEA' : '#EEF2FF', color: returned ? '#111' : overdue ? '#8A1F12' : '#1E3A8A' }}>
-                        {returned ? 'Rendu' : overdue ? 'En retard' : 'En cours'}
-                      </span>
-                    </div>
-                    <div style={{ color: '#555', fontSize: 14, marginTop: 2 }}>
-                      Emprunteur: <strong>{l.borrower}</strong> · {l.startDate} → {l.dueDate}
-                      {returned && l.returnedAt ? ` · Rendu le ${l.returnedAt}` : ''}
-                    </div>
-                    {!returned && (
-                      <div style={{ fontSize: 12, marginTop: 4, color: overdue ? '#8A1F12' : '#0E7A4D' }}>
-                        {overdue ? `En retard de ${Math.abs(days)} jour(s)` : `Il reste ${days} jour(s)`}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, marginLeft: 12, flexWrap: 'wrap' }}>
-                    {!returned && (
-                      <button
-                        onClick={() => returnLoan(l.id)}
-                        style={{
-                          padding: '8px 10px',
-                          borderRadius: 6,
-                          border: '1px solid #10b981',
-                          background: '#10b981',
-                          color: 'white',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Marquer comme rendu
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setLoans((prev) => prev.filter((x) => x.id !== l.id))}
-                      style={{
-                        padding: '8px 10px',
-                        borderRadius: 6,
-                        border: '1px solid #ef4444',
-                        background: '#ef4444',
-                        color: 'white',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Supprimer
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+        <LoansList />
         </div>
-        )}
       </section>
       )}
 
