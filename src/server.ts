@@ -203,7 +203,7 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
   async function writeState(state: { books: any[]; loans: any[] }) {
     await mkdir(dataDir, { recursive: true });
     const payload = JSON.stringify({ books: state.books, loans: state.loans }, null, 2);
-    await writeFile(dbPath, payload);
+    await fsWriteFile(dbPath, payload);
   }
 
   // GET current state
@@ -312,7 +312,7 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
         const username = String(body.username || '').trim();
         const password = String(body.password || '');
-        const roles = Array.isArray(body.roles) ? body.roles.filter((r) => typeof r === 'string') : [];
+        const roles = Array.isArray(body.roles) ? body.roles.filter((r: any) => typeof r === 'string') : [];
         if (!username || !password) return sendJSON(res, 400, { error: 'missing_fields' });
         if (users.some((u) => u.username === username)) return sendJSON(res, 409, { error: 'exists' });
         const pass = await hashPassword(password);
@@ -659,7 +659,7 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const r = await fetch(remote, { headers: { 'User-Agent': OPENLIB_UA } as any });
         if (!r.ok) return sendText(res, 404, 'not found');
         const buf = Buffer.from(await r.arrayBuffer());
-        await writeFile(filePath, buf);
+        await fsWriteFile(filePath, buf);
         res.statusCode = 200;
         res.setHeader('Content-Type', 'image/jpeg');
         res.setHeader('Content-Length', String(buf.length));
