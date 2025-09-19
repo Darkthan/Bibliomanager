@@ -1642,7 +1642,7 @@ export function App() {
       {route === '/livres/nouveau' && (
       <section style={{ padding: 16, border: '1px solid #eee', borderRadius: 8 }}>
         <h2 style={{ marginTop: 0 }}>Ajouter un livre</h2>
-        <div style={{ marginBottom: 12, position: 'relative' }}>
+        <div className="add-form-wrapper" style={{ marginBottom: 12 }}>
           <input
             aria-label="Rechercher un livre (ISBN, code-barres, titre, auteur)"
             placeholder="Rechercher un livre dans la base ouverte…"
@@ -1660,31 +1660,6 @@ export function App() {
             }}
             style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid #ddd', fontSize: 16 }}
           />
-          {showAddSuggestions && addQuery.trim() !== '' && (
-            <ul role="listbox" style={{ position: 'absolute', zIndex: 10, top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #eee', borderRadius: 10, marginTop: 4, listStyle: 'none', padding: 6, maxHeight: 260, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}>
-              {addLoading && <li style={{ padding: '8px 10px', color: '#555' }}>Recherche…</li>}
-              {!addLoading && addSuggestions.length === 0 && <li style={{ padding: '8px 10px', color: '#555' }}>Aucun résultat</li>}
-              {addSuggestions.map((s, idx) => (
-                <li key={s.title + (s.isbn13 || s.isbn10 || idx)}>
-                  <div role="option" aria-selected={idx === addHighlightIndex} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 10px', borderRadius: 8, background: idx === addHighlightIndex ? '#EFF6FF' : 'transparent' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                      { (s.isbn13 || s.isbn10) ? (
-                        <img src={`/covers/isbn/${String(s.isbn13 || s.isbn10)}?s=S`} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
-                      ) : (
-                        s.coverUrl ? <img src={s.coverUrl} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} /> : <div style={{ width: 36, height: 54, background: '#f3f4f6', borderRadius: 4 }} />
-                      )}
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{highlight(s.title, addQuery)}</div>
-                        <div style={{ color: '#666', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(s.authors && s.authors[0]) || ''}</div>
-                        <div style={{ color: '#666', fontSize: 12 }}>{s.isbn13 || s.isbn10 || ''}</div>
-                      </div>
-                    </div>
-                    <button type="button" onMouseDown={(e) => { e.preventDefault(); openEditionPicker(s); }} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>Choisir édition</button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
           {showEditionPicker && (
             <div style={{ position: 'absolute', zIndex: 10, top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #ddd', borderRadius: 10, marginTop: 6, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -1793,6 +1768,31 @@ export function App() {
             Ajouter
           </button>
         </form>
+        {showAddSuggestions && addQuery.trim() !== '' && (
+          <ul role="listbox" style={{ zIndex: 10, background: 'white', border: '1px solid #eee', borderRadius: 10, marginTop: 8, listStyle: 'none', padding: 6, maxHeight: 260, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}>
+            {addLoading && <li style={{ padding: '8px 10px', color: '#555' }}>Recherche…</li>}
+            {!addLoading && addSuggestions.length === 0 && <li style={{ padding: '8px 10px', color: '#555' }}>Aucun résultat</li>}
+            {addSuggestions.map((s, idx) => (
+              <li key={s.title + (s.isbn13 || s.isbn10 || idx)}>
+                <div role="option" aria-selected={idx === addHighlightIndex} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 10px', borderRadius: 8, background: idx === addHighlightIndex ? '#EFF6FF' : 'transparent' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                    { (s.isbn13 || s.isbn10) ? (
+                      <img src={`/covers/isbn/${String(s.isbn13 || s.isbn10)}?s=S`} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
+                    ) : (
+                      s.coverUrl ? <img src={s.coverUrl} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} /> : <div style={{ width: 36, height: 54, background: '#f3f4f6', borderRadius: 4 }} />
+                    )}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{highlight(s.title, addQuery)}</div>
+                      <div style={{ color: '#666', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(s.authors && s.authors[0]) || ''}</div>
+                      <div style={{ color: '#666', fontSize: 12 }}>{s.isbn13 || s.isbn10 || ''}</div>
+                    </div>
+                  </div>
+                  <button type="button" onMouseDown={(e) => { e.preventDefault(); openEditionPicker(s); }} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>Choisir édition</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
         {(isbnValidityHint || bookLookupError) && (
           <p style={{ color: '#8A1F12', fontSize: 13, marginTop: 8 }}>
             {isbnValidityHint || bookLookupError}
