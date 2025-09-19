@@ -1,0 +1,39 @@
+/* Global responsive tweaks for Bibliomanager2 */
+
+/* Base container */
+.app-main { padding: 16px; }
+
+/* Header stacks on small screens */
+@media (max-width: 640px) {
+  .app-header { flex-direction: column; align-items: flex-start !important; gap: 8px; }
+}
+
+/* Navigation: allow items to fill rows evenly */
+.main-nav { row-gap: 8px; }
+.main-nav a { flex: 1 1 180px; }
+@media (max-width: 640px) {
+  .main-nav a { flex-basis: 48%; min-width: 140px; }
+}
+
+/* Loan form: switch from 5 columns to 2, then 1 */
+.loan-form { grid-template-columns: 2fr 2fr 1fr 1fr auto !important; }
+@media (max-width: 1024px) {
+  .loan-form { grid-template-columns: 1fr 1fr !important; }
+}
+@media (max-width: 640px) {
+  .loan-form { grid-template-columns: 1fr !important; }
+}
+
+/* Book list items: stack content and actions on narrow viewports */
+.book-list { gap: 10px !important; }
+@media (max-width: 820px) {
+  .book-item { flex-direction: column; align-items: stretch !important; gap: 10px; }
+  .book-actions { margin-left: 0 !important; justify-content: flex-start; }
+  .book-actions button { flex: 0 1 auto; }
+}
+
+/* Available books grid already responsive; ensure tile min width is manageable on phones */
+@media (max-width: 400px) {
+  /* no-op placeholder for future fine-tuning */
+}
+

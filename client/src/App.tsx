@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import './responsive.css';
 
 type Book = {
   id: number;
@@ -1379,7 +1380,7 @@ export function App() {
   }
 
   return (
-    <main
+    <main className="app-main"
       style={{
         fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
         padding: 24,
@@ -1389,7 +1390,7 @@ export function App() {
         margin: '0 auto',
       }}
     >
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <header className="app-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1 style={{ margin: 0 }}>Bibliomanager2</h1>
         <span
           aria-live="polite"
@@ -1409,7 +1410,7 @@ export function App() {
       </header>
 
       {route !== '/' && (
-        <nav aria-label="Navigation principale" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <nav className="main-nav" aria-label="Navigation principale" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {[
             { to: '/livres/disponibles', label: 'Livres disponibles' },
             { to: '/livres/nouveau', label: 'Ajouter un livre' },
@@ -1634,7 +1635,7 @@ export function App() {
             </div>
           )}
         </div>
-        <form
+        <form className="loan-form"
           onSubmit={(e) => {
             e.preventDefault();
             addBook();
@@ -1769,10 +1770,11 @@ export function App() {
           <p>Aucun livre correspondant. Ajoutez-en un ci-dessus ou modifiez le filtre.</p>
         ) : (
           <>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
+          <ul className="book-list" style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
             {visibleBooks.map((b) => (
               <li
                 key={b.id}
+                className="book-item"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1855,7 +1857,7 @@ export function App() {
                   )}
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, marginLeft: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div className="book-actions" style={{ display: 'flex', gap: 8, marginLeft: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                   <button
                     onClick={() => printViaLocalAgent(b)}
                     title="Imprimer une étiquette 44×19 via l'agent USB Zebra"
