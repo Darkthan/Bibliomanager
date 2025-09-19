@@ -2090,6 +2090,8 @@ export function App() {
       {route === '/prets' && (
       <section style={{ padding: 16, border: '1px solid #eee', borderRadius: 8 }}>
         <h2 style={{ marginTop: 0 }}>Prêts</h2>
+        <div className="panel" style={{ padding: 16, border: '1px solid #eee', borderRadius: 12 }}>
+          <div className="panel-title" style={{ fontWeight: 700, marginBottom: 12 }}>Nouveau prêt</div>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -2129,7 +2131,7 @@ export function App() {
               }}
               style={{ width: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
             />
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+            <div className="toolbar" style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
               <button
                 type="button"
                 onClick={async () => {
@@ -2260,13 +2262,35 @@ export function App() {
             Enregistrer le prêt
           </button>
         </form>
+        {loanBookId && (
+          <div className="book-preview" style={{ marginTop: 8, display: 'flex', gap: 12, alignItems: 'center' }}>
+            {(() => { const b = books.find((x) => x.id === loanBookId); if (!b) return null; return (
+              <>
+                {b.isbn ? (<img src={`/covers/isbn/${b.isbn}?s=S`} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 6 }} />)
+                  : b.coverUrl ? (<img src={b.coverUrl} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 6 }} />)
+                  : (<div style={{ width: 36, height: 54, background: '#f3f4f6', borderRadius: 6 }} />)}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.title}</div>
+                  <div style={{ color: '#555', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.author}</div>
+                  <div style={{ color: '#666', fontSize: 12 }}>EPC {b.epc.slice(0,8)}…{b.epc.slice(-4)}{b.isbn ? ` · ISBN ${b.isbn}` : ''}</div>
+                </div>
+                <div style={{ marginLeft: 'auto' }}>
+                  <button type="button" onClick={() => { setLoanBookId(''); setLoanBookQuery(''); }} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #ddd', background: '#f9fafb' }}>Changer</button>
+                </div>
+              </>
+            ); })()}
+          </div>
+        )}
         {books.length === 0 && (
           <p style={{ color: '#8A1F12', fontSize: 13, marginTop: 8 }}>
             Ajoutez d'abord un livre pour pouvoir créer un prêt.
           </p>
         )}
+        </div>
 
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
+        <div className="panel" style={{ padding: 16, border: '1px solid #eee', borderRadius: 12, marginTop: 16 }}>
+          <div className="panel-title" style={{ fontWeight: 700, marginBottom: 8 }}>Historique des prêts</div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             aria-label="Rechercher un prêt (nom, livre, ISBN, code-barres)"
             placeholder="Filtrer les prêts…"
@@ -2285,8 +2309,10 @@ export function App() {
             <option value="returned">Rendus</option>
             <option value="all">Tous</option>
           </select>
-          <span style={{ color: '#555' }}>
-            {loans.filter((l) => !loanUtils.isReturned(l)).length} en cours ·{' '}
+          <span className="chip" style={{ color: '#0E7A4D', background: '#E7F7EE', border: '1px solid #BDEBD3', padding: '4px 8px', borderRadius: 999, fontSize: 12 }}>
+            {loans.filter((l) => !loanUtils.isReturned(l)).length} en cours
+          </span>
+          <span className="chip" style={{ color: '#8A1F12', background: '#FDECEA', border: '1px solid #F5C6C1', padding: '4px 8px', borderRadius: 999, fontSize: 12 }}>
             {loans.filter((l) => loanUtils.isOverdue(l)).length} en retard
           </span>
         </div>
@@ -2304,24 +2330,23 @@ export function App() {
                 <li
                   key={l.id}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
+                    display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
                     padding: '10px 12px',
                     border: '1px solid #eee',
                     borderRadius: 8,
                     background: returned ? '#f5f5f5' : overdue ? '#FDECEA' : 'white',
                   }}
                 >
-                  <div>
-                    <div style={{ fontWeight: 600 }}>
-                      {book ? book.title : 'Livre supprimé'}
-                      {book && ' — '}
-                      <span style={{ color: '#555', fontWeight: 400 }}>{book?.author}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{book ? book.title : 'Livre supprimé'}</div>
+                      {book && <div style={{ color: '#555', fontWeight: 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>— {book.author}</div>}
+                      <span className="chip" style={{ padding: '2px 8px', borderRadius: 999, fontSize: 12, border: '1px solid #ddd', background: returned ? '#f3f4f6' : overdue ? '#FDECEA' : '#EEF2FF', color: returned ? '#111' : overdue ? '#8A1F12' : '#1E3A8A' }}>
+                        {returned ? 'Rendu' : overdue ? 'En retard' : 'En cours'}
+                      </span>
                     </div>
-                    <div style={{ color: '#555', fontSize: 14 }}>
-                      Emprunteur: <strong>{l.borrower}</strong>
-                      {' · '}Du {l.startDate} au {l.dueDate}
+                    <div style={{ color: '#555', fontSize: 14, marginTop: 2 }}>
+                      Emprunteur: <strong>{l.borrower}</strong> · {l.startDate} → {l.dueDate}
                       {returned && l.returnedAt ? ` · Rendu le ${l.returnedAt}` : ''}
                     </div>
                     {!returned && (
@@ -2330,7 +2355,7 @@ export function App() {
                       </div>
                     )}
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, marginLeft: 12, flexWrap: 'wrap' }}>
                     {!returned && (
                       <button
                         onClick={() => returnLoan(l.id)}
@@ -2364,6 +2389,7 @@ export function App() {
               );
             })}
           </ul>
+        </div>
         )}
       </section>
       )}
