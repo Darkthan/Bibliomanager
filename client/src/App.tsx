@@ -1658,7 +1658,7 @@ export function App() {
               else if (e.key === 'Enter') { if (addHighlightIndex >= 0) { e.preventDefault(); openEditionPicker(addSuggestions[addHighlightIndex]); } }
               else if (e.key === 'Escape') { setShowAddSuggestions(false); }
             }}
-            style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid #ddd', fontSize: 16 }}
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
           />
           {showEditionPicker && (
             <div style={{ position: 'absolute', zIndex: 10, top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #ddd', borderRadius: 10, marginTop: 6, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>
