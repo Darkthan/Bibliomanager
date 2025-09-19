@@ -381,8 +381,8 @@ export function App() {
     window.history.pushState({}, '', to);
     setRoute(to);
   }
-  async function login(username: string, password: string) {
-    const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+  async function login(username: string, password: string, remember = true) {
+    const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password, remember }) });
     if (!r.ok) throw new Error('Identifiants invalides');
     const meR = await fetch('/api/auth/me', { cache: 'no-store' });
     const d = await meR.json();
@@ -1450,11 +1450,11 @@ export function App() {
     const [err, setErr] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     return (
-      <form onSubmit={async (e) => { e.preventDefault(); setErr(null); setLoading(true); try { await onSubmit(u, p); } catch (e: any) { setErr(e?.message || 'Erreur de connexion'); } finally { setLoading(false); } }} style={{ display: 'grid', gap: 10 }}>
+      <form onSubmit={async (e) => { e.preventDefault(); setErr(null); setLoading(true); try { await onSubmit(u, p); } catch (e: any) { setErr(e?.message || 'Erreur de connexion'); } finally { setLoading(false); } }} style={{ display: 'grid', gap: 12 }}>
         <input aria-label="Nom d'utilisateur" placeholder="Nom d'utilisateur" value={u} onChange={(e) => setU(e.target.value)} style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }} />
         <input aria-label="Mot de passe" type="password" placeholder="Mot de passe" value={p} onChange={(e) => setP(e.target.value)} style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }} />
         {err && <div style={{ color: '#8A1F12', fontSize: 14 }}>{err}</div>}
-        <button type="submit" disabled={loading || !u || !p} style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #2563eb', background: loading ? '#93c5fd' : '#3b82f6', color: 'white' }}>{loading ? 'Connexion…' : 'Se connecter'}</button>
+        <button type="submit" disabled={loading || !u || !p} style={{ padding: '10px 12px', borderRadius: 6, width: '100%', border: '1px solid #2563eb', background: loading ? '#93c5fd' : '#3b82f6', color: 'white' }}>{loading ? 'Connexion…' : 'Se connecter'}</button>
       </form>
     );
   }
@@ -1630,7 +1630,7 @@ export function App() {
             <span style={{ display: 'block', width: 20, height: 2, background: 'var(--text)', margin: '0 auto 4px' }} />
             <span style={{ display: 'block', width: 20, height: 2, background: 'var(--text)', margin: '0 auto' }} />
           </button>
-          <h1 style={{ margin: 0 }}>Bibliomanager2</h1>
+          <h1 style={{ margin: 0 }}>Bibliomanager</h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <button
@@ -1886,14 +1886,16 @@ export function App() {
       )}
 
       {route === '/connexion' && (
-        <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8, maxWidth: 460 }}>
-          <h2 style={{ marginTop: 0 }}>Connexion</h2>
-          {me.username ? (
-            <p style={{ color: 'var(--muted)' }}>Connecté en tant que <strong>{me.username}</strong>.</p>
-          ) : (
-            <LoginForm onSubmit={async (u, p) => { await login(u, p); navigate('/livres/disponibles'); }} />
-          )}
-        </section>
+        <div style={{ display: 'grid', placeItems: 'center', minHeight: '75vh' }}>
+          <section style={{ padding: 20, border: '1px solid var(--border)', borderRadius: 6, width: 'min(380px, 92vw)', minHeight: 420, background: 'var(--panel)', display: 'grid', alignContent: 'center', gap: 16 }}>
+            <h2 style={{ marginTop: 0, textAlign: 'center' }}>Connexion</h2>
+            {me.username ? (
+              <p style={{ color: 'var(--muted)', textAlign: 'center' }}>Connecté en tant que <strong>{me.username}</strong>.</p>
+            ) : (
+              <LoginForm onSubmit={async (u, p, remember) => { await login(u, p, remember); navigate('/livres/disponibles'); }} />
+            )}
+          </section>
+        </div>
       )}
 
       {route === '/livres/nouveau' && (
@@ -2865,6 +2867,7 @@ export function App() {
             ))}
           </ul>
         )}
+        </>
         )}
       </section>
       )}

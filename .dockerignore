@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log
+dist/client/**/*.map
+**/.git
+**/.DS_Store
+**/Thumbs.db
+cache
+data
+dist/*
+!dist/.gitkeep
+client/dist
+.env
+.env.*
+coverage
+tmp

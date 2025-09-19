@@ -9,7 +9,7 @@ import net from 'node:net';
 // Simple in-memory cache + polite rate limiting for Open Library
 const OPENLIB_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const OPENLIB_MIN_INTERVAL_MS = 1000; // ~1 req/sec
-const OPENLIB_UA = 'Bibliomanager2/0.0.6 (+https://example.invalid)';
+const OPENLIB_UA = 'Bibliomanager/0.0.6 (+https://example.invalid)';
 const cache = new Map<string, { expires: number; data: any }>();
 const inflight = new Map<string, Promise<any>>();
 let rateChain: Promise<void> = Promise.resolve();
@@ -276,13 +276,15 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
         const username = String(body.username || '').trim();
         const password = String(body.password || '');
+        const remember = !!body.remember;
         if (!username || !password) return sendJSON(res, 400, { error: 'missing_credentials' });
         const users = await readUsers();
         const u = users.find((x) => x.username === username);
         if (!u || !(await verifyPassword(u.pass, password))) return sendJSON(res, 401, { error: 'invalid_credentials' });
-        const exp = Math.floor(Date.now() / 1000) + (60 * 60 * 12); // 12h
+        const ttl = remember ? (60 * 60 * 24 * 30) : (60 * 60 * 12); // 30 jours ou 12h
+        const exp = Math.floor(Date.now() / 1000) + ttl;
         const token = await signToken({ u: u.username, r: Array.isArray(u.roles) ? u.roles : [], exp });
-        setCookie(res, 'bm2_auth', token, { httpOnly: true, sameSite: 'Lax', maxAge: 60 * 60 * 12 });
+        setCookie(res, 'bm2_auth', token, { httpOnly: true, sameSite: 'Lax', maxAge: ttl });
         return sendJSON(res, 200, { ok: true });
       } catch (e: any) {
         return sendJSON(res, 400, { error: 'login_failed', message: e?.message || String(e) });
@@ -672,7 +674,7 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
   }
 
   // Default route
-  return sendText(res, 200, 'Bibliomanager2');
+  return sendText(res, 200, 'Bibliomanager');
 }
 
 export function makeServer() {
@@ -680,6 +682,24 @@ export function makeServer() {
 }
 
 export async function startServer(port: number) {
+  // Ensure there is at least one admin user on first run
+  async function ensureDefaultAdmin() {
+    try {
+      const users = await readUsers();
+      const hasAdmin = users.some((u) => Array.isArray(u.roles) && u.roles.includes('admin'));
+      if (!hasAdmin) {
+        const pass = await hashPassword('admin');
+        users.push({ username: 'admin', pass, roles: ['admin', 'import', 'loans'] });
+        await writeUsers(users);
+        // eslint-disable-next-line no-console
+        console.log('[auth] Default admin created: username="admin" password="admin" (please change it)');
+      }
+    } catch {
+      // ignore bootstrap error
+    }
+  }
+
+  await ensureDefaultAdmin();
   const server = makeServer();
   await new Promise<void>((resolve) => server.listen(port, resolve));
   return server;

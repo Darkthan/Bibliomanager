@@ -1,4 +1,4 @@
-# Bibliomanager2
+# Bibliomanager
 
 Gestionnaire de bibliothèque (WIP). Ce dépôt contient la structure de base, la documentation et les conventions pour démarrer rapidement. Reportez-vous à `AGENTS.md` pour les règles de contribution et à `STACK.md` pour la stack et l’environnement de dev.
 

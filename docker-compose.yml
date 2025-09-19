@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    image: bibliomanager:latest
+    container_name: bibliomanager
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # Optional: set timezone for logs
+      - TZ=Europe/Paris
+    ports:
+      - "3000:3000"
+    volumes:
+      - data:/app/data
+      - cache:/app/cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  data:
+  cache:
+
