@@ -1,5 +1,57 @@
 /* Global responsive tweaks for Bibliomanager2 */
 
+/* Theme variables */
+:root {
+  /* palettes */
+  --bg: #ffffff;
+  --text: #111111;
+  --muted: #555555;
+  --muted-2: #666666;
+  --border: #dddddd;
+  --panel: #ffffff;
+  --nav-active-bg: #EFF6FF;
+  --btn-secondary-bg: #f9fafb;
+  --card-placeholder: #f3f4f6;
+  --active-bg: #EEF2FF;      /* soft blue */
+  --active-text: #1E3A8A;    /* deep blue */
+  --overdue-bg: #FDECEA;     /* soft red */
+  --overdue-text: #8A1F12;   /* deep red */
+  /* chips */
+  --chip-ok-bg: #E7F7EE;
+  --chip-ok-border: #BDEBD3;
+  --chip-ok-text: #0E7A4D;
+  --chip-bad-bg: #FDECEA;
+  --chip-bad-border: #F5C6C1;
+  --chip-bad-text: #8A1F12;
+  color-scheme: light;
+}
+
+.theme-dark {
+  --bg: #0b1220;         /* slate-950-ish */
+  --text: #e5e7eb;       /* slate-200 */
+  --muted: #94a3b8;      /* slate-400 */
+  --muted-2: #9ca3af;    /* gray-400 */
+  --border: #334155;     /* slate-700 */
+  --panel: #111827;      /* gray-900 */
+  --nav-active-bg: #0b2444; /* deep blue tint */
+  --btn-secondary-bg: #0f172a; /* slate-900 */
+  --card-placeholder: #1f2937; /* gray-800 */
+  --active-bg: #0b2444;       /* dark blue tint */
+  --active-text: #93c5fd;     /* light blue text */
+  --overdue-bg: #3a0d0b;      /* dark red tint */
+  --overdue-text: #fecaca;    /* light red text */
+  /* keep chips readable on dark */
+  --chip-ok-bg: #0b2e1f;
+  --chip-ok-border: #14532d;
+  --chip-ok-text: #86efac;
+  --chip-bad-bg: #3a0d0b;
+  --chip-bad-border: #7f1d1d;
+  --chip-bad-text: #fecaca;
+  color-scheme: dark;
+}
+
+html, body, #root { background: var(--bg); color: var(--text); }
+
 /* Base container */
 .app-main { padding: 16px; }
 
@@ -56,7 +108,7 @@
 }
 
 /* Panels and common elements */
-.panel { background: #fff; }
+.panel { background: var(--panel); }
 .panel-title { font-size: 16px; }
 .toolbar { row-gap: 6px; }
 .chip { user-select: none; }
@@ -65,9 +117,9 @@
 .add-form { display: grid !important; grid-template-columns: 3fr 3fr 2fr 2fr min-content min-content; gap: 12px; align-items: end; }
 .add-form .field { display: flex; flex-direction: column; min-width: 0; }
 .add-form .f-lookup button, .add-form .f-submit button { white-space: nowrap; }
-.add-suggest { display: grid; gap: 6px; }
-.add-suggest-row { display: grid; grid-template-columns: 1fr auto; align-items: center; }
-.add-suggest-info { min-width: 0; }
+.add-suggest { display: grid; gap: 6px; width: 100%; box-sizing: border-box; overflow-x: hidden; }
+.add-suggest-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px; }
+.add-suggest-info { min-width: 0; overflow: hidden; }
 @media (max-width: 1200px) {
   .add-form { grid-template-columns: 2fr 2fr 1fr 1fr; }
   .add-form .f-lookup { grid-column: 3 / 5; justify-self: end; }
@@ -100,5 +152,6 @@
 
 /* Available books grid already responsive; ensure tile min width is manageable on phones */
 @media (max-width: 400px) {
-  /* no-op placeholder for future fine-tuning */
+  /* Tighter buttons to avoid horizontal overflow on very small screens */
+  .add-suggest-row button { padding: 6px 8px !important; font-size: 13px; }
 }

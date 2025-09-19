@@ -46,6 +46,19 @@ export function App() {
   const [editingBookId, setEditingBookId] = useState<number | null>(null);
   const [loanListQuery, setLoanListQuery] = useState('');
   const [route, setRoute] = useState('/livres/disponibles');
+  // Thème (clair/sombre)
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try {
+      const saved = localStorage.getItem('bm2/theme');
+      if (saved === 'light' || saved === 'dark') return saved;
+      const prefersDark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      return prefersDark ? 'dark' : 'light';
+    } catch { return 'light'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('bm2/theme', theme); } catch {}
+    try { document.documentElement.classList.toggle('theme-dark', theme === 'dark'); } catch {}
+  }, [theme]);
   // Menu responsive (hamburger)
   const [navOpen, setNavOpen] = useState(false);
   // Scan (prêts): recherche livre par QR (EPC) / code-barres (ISBN)
@@ -959,7 +972,7 @@ export function App() {
     return url ? (
       <img src={url} width={size} height={size} alt="QR code" style={{ border: '1px solid #111', background: 'white' }} />
     ) : (
-      <div style={{ width: size, height: size, background: '#f3f4f6', border: '1px dashed #999', borderRadius: 6 }} />
+      <div style={{ width: size, height: size, background: 'var(--card-placeholder)', border: '1px dashed #999', borderRadius: 6 }} />
     );
   }
 
@@ -1340,25 +1353,25 @@ export function App() {
               style={{
                 display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
                 padding: '10px 12px',
-                border: '1px solid #eee',
+                border: '1px solid var(--border)',
                 borderRadius: 8,
-                background: returned ? '#f5f5f5' : overdue ? '#FDECEA' : 'white',
+                background: returned ? 'var(--card-placeholder)' : overdue ? 'var(--overdue-bg)' : 'var(--panel)',
               }}
             >
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{book ? book.title : 'Livre supprimé'}</div>
-                  {book && <div style={{ color: '#555', fontWeight: 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>— {book.author}</div>}
-                  <span className="chip" style={{ padding: '2px 8px', borderRadius: 999, fontSize: 12, border: '1px solid #ddd', background: returned ? '#f3f4f6' : overdue ? '#FDECEA' : '#EEF2FF', color: returned ? '#111' : overdue ? '#8A1F12' : '#1E3A8A' }}>
+                  {book && <div style={{ color: 'var(--muted)', fontWeight: 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>— {book.author}</div>}
+                  <span className="chip" style={{ padding: '2px 8px', borderRadius: 999, fontSize: 12, border: '1px solid var(--border)', background: returned ? 'var(--card-placeholder)' : overdue ? 'var(--overdue-bg)' : 'var(--active-bg)', color: returned ? 'var(--text)' : overdue ? 'var(--overdue-text)' : 'var(--active-text)' }}>
                     {returned ? 'Rendu' : overdue ? 'En retard' : 'En cours'}
                   </span>
                 </div>
-                <div style={{ color: '#555', fontSize: 14, marginTop: 2 }}>
+                <div style={{ color: 'var(--muted)', fontSize: 14, marginTop: 2 }}>
                   Emprunteur: <strong>{l.borrower}</strong> · {l.startDate} → {l.dueDate}
                   {returned && l.returnedAt ? ` · Rendu le ${l.returnedAt}` : ''}
                 </div>
                 {!returned && (
-                  <div style={{ fontSize: 12, marginTop: 4, color: overdue ? '#8A1F12' : '#0E7A4D' }}>
+                  <div style={{ fontSize: 12, marginTop: 4, color: overdue ? 'var(--overdue-text)' : 'var(--chip-ok-text)' }}>
                     {overdue ? `En retard de ${Math.abs(days)} jour(s)` : `Il reste ${days} jour(s)`}
                   </div>
                 )}
@@ -1477,29 +1490,37 @@ export function App() {
             aria-label="Menu"
             aria-expanded={navOpen}
             onClick={() => setNavOpen((v) => !v)}
-            style={{ display: 'none', width: 40, height: 40, borderRadius: 8, border: '1px solid #ddd', background: '#fff' }}
+            style={{ display: 'none', width: 40, height: 40, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--panel)' }}
           >
-            <span style={{ display: 'block', width: 20, height: 2, background: '#111', margin: '0 auto 4px' }} />
-            <span style={{ display: 'block', width: 20, height: 2, background: '#111', margin: '0 auto 4px' }} />
-            <span style={{ display: 'block', width: 20, height: 2, background: '#111', margin: '0 auto' }} />
+            <span style={{ display: 'block', width: 20, height: 2, background: 'var(--text)', margin: '0 auto 4px' }} />
+            <span style={{ display: 'block', width: 20, height: 2, background: 'var(--text)', margin: '0 auto 4px' }} />
+            <span style={{ display: 'block', width: 20, height: 2, background: 'var(--text)', margin: '0 auto' }} />
           </button>
           <h1 style={{ margin: 0 }}>Bibliomanager2</h1>
         </div>
-        <span
-          aria-live="polite"
-          title={status === 'loading' ? 'Vérification…' : status === 'ok' ? 'Serveur OK' : 'Serveur indisponible'}
+        <button
+          type="button"
+          aria-label="Paramètres"
+          title="Paramètres"
+          onClick={() => navigate('/parametres')}
           style={{
-            padding: '4px 10px',
-            borderRadius: 999,
-            fontSize: 14,
-            background:
-              status === 'ok' ? '#E7F7EE' : status === 'error' ? '#FDECEA' : 'rgba(0,0,0,0.06)',
-            color: status === 'ok' ? '#0E7A4D' : status === 'error' ? '#8A1F12' : '#333',
-            border: '1px solid ' + (status === 'ok' ? '#BDEBD3' : status === 'error' ? '#F5C6C1' : '#ddd'),
+            width: 40,
+            height: 40,
+            display: 'grid',
+            placeItems: 'center',
+            borderRadius: 8,
+            border: '1px solid var(--border)',
+            background: 'var(--panel)',
+            color: 'var(--text)',
+            cursor: 'pointer',
           }}
         >
-          Statut serveur: {status === 'loading' ? 'chargement…' : status}
-        </span>
+          {/* simple gear icon (SVG) */}
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="currentColor" strokeWidth="1.5"/>
+            <path d="M19.4 12.98c.04-.32.06-.65.06-.98 0-.33-.02-.66-.06-.98l2.01-1.57a.5.5 0 0 0 .12-.64l-1.9-3.29a.5.5 0 0 0-.6-.22l-2.37.95a7.63 7.63 0 0 0-1.7-.98l-.36-2.52a.5.5 0 0 0-.5-.43h-3.8a.5.5 0 0 0-.5.43l-.36 2.52c-.6.24-1.17.56-1.7.98l-2.37-.95a.5.5 0 0 0-.6.22L2.47 6.8a.5.5 0 0 0 .12.64L4.6 9.01c-.04.32-.06.65-.06.99 0 .33.02.66.06.98l-2.01 1.57a.5.5 0 0 0-.12.64l1.9 3.29c.13.23.4.32.64.22l2.37-.95c.52.42 1.1.75 1.7.99l.36 2.52c.05.25.26.43.5.43h3.8c.24 0 .45-.18.5-.43l.36-2.52c.6-.24 1.17-.57 1.7-.99l2.37.95c.24.1.51 0 .64-.22l1.9-3.29a.5.5 0 0 0-.12-.64l-2.01-1.57Z" stroke="currentColor" strokeWidth="1.5"/>
+          </svg>
+        </button>
       </header>
 
       {route !== '/' && (
@@ -1516,9 +1537,9 @@ export function App() {
               onClick={(e) => { e.preventDefault(); navigate(item.to); setNavOpen(false); }}
               style={{
                 padding: 'var(--nav-pad-y, 12px) var(--nav-pad-x, 16px)',
-                border: '2px solid ' + (route === item.to ? '#2563eb' : '#ddd'),
-                background: route === item.to ? '#EFF6FF' : '#fff',
-                color: '#111',
+                border: '2px solid ' + (route === item.to ? '#2563eb' : 'var(--border)'),
+                background: route === item.to ? 'var(--nav-active-bg)' : 'var(--panel)',
+                color: 'var(--text)',
                 borderRadius: 'var(--nav-radius, 10px)',
                 minWidth: 'var(--nav-minw, 160px)',
                 textAlign: 'center',
@@ -1549,8 +1570,8 @@ export function App() {
                 justifyContent: 'space-between',
                 padding: 20,
                 borderRadius: 16,
-                border: '2px solid #e5e7eb',
-                background: '#ffffff',
+                border: '2px solid var(--border)',
+                background: 'var(--panel)',
                 minHeight: 140,
                 textAlign: 'left',
                 fontSize: 18,
@@ -1560,7 +1581,7 @@ export function App() {
               <div style={{ fontSize: 28 }}>📚</div>
               <div>
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>Livres disponibles</div>
-                <div style={{ color: '#555', fontSize: 14 }}>Consulter et prêter rapidement</div>
+                <div style={{ color: 'var(--muted)', fontSize: 14 }}>Consulter et prêter rapidement</div>
               </div>
             </button>
 
@@ -1573,8 +1594,8 @@ export function App() {
                 justifyContent: 'space-between',
                 padding: 20,
                 borderRadius: 16,
-                border: '2px solid #e5e7eb',
-                background: '#ffffff',
+                border: '2px solid var(--border)',
+                background: 'var(--panel)',
                 minHeight: 140,
                 textAlign: 'left',
                 fontSize: 18,
@@ -1584,7 +1605,7 @@ export function App() {
               <div style={{ fontSize: 28 }}>➕</div>
               <div>
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>Ajouter un livre</div>
-                <div style={{ color: '#555', fontSize: 14 }}>Saisie rapide avec ISBN/CB</div>
+                <div style={{ color: 'var(--muted)', fontSize: 14 }}>Saisie rapide avec ISBN/CB</div>
               </div>
             </button>
 
@@ -1597,8 +1618,8 @@ export function App() {
                 justifyContent: 'space-between',
                 padding: 20,
                 borderRadius: 16,
-                border: '2px solid #e5e7eb',
-                background: '#ffffff',
+                border: '2px solid var(--border)',
+                background: 'var(--panel)',
                 minHeight: 140,
                 textAlign: 'left',
                 fontSize: 18,
@@ -1608,7 +1629,7 @@ export function App() {
               <div style={{ fontSize: 28 }}>📄</div>
               <div>
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>Prêts</div>
-                <div style={{ color: '#555', fontSize: 14 }}>Créer et suivre les prêts</div>
+                <div style={{ color: 'var(--muted)', fontSize: 14 }}>Créer et suivre les prêts</div>
               </div>
             </button>
 
@@ -1621,8 +1642,8 @@ export function App() {
                 justifyContent: 'space-between',
                 padding: 20,
                 borderRadius: 16,
-                border: '2px solid #e5e7eb',
-                background: '#ffffff',
+                border: '2px solid var(--border)',
+                background: 'var(--panel)',
                 minHeight: 140,
                 textAlign: 'left',
                 fontSize: 18,
@@ -1632,15 +1653,94 @@ export function App() {
               <div style={{ fontSize: 28 }}>📦</div>
               <div>
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>Import en masse</div>
-                <div style={{ color: '#555', fontSize: 14 }}>Scanner des codes-barres</div>
+                <div style={{ color: 'var(--muted)', fontSize: 14 }}>Scanner des codes-barres</div>
               </div>
             </button>
           </div>
         </section>
       )}
 
+      {route === '/parametres' && (
+        <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}>
+          <h2 style={{ marginTop: 0 }}>Paramètres</h2>
+          <div style={{ display: 'grid', gap: 20 }}>
+            <div>
+              <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Apparence</div>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={theme === 'dark'}
+                  onChange={(e) => setTheme(e.target.checked ? 'dark' : 'light')}
+                />
+                Thème sombre
+              </label>
+              <div style={{ color: 'var(--muted-2)', fontSize: 13, marginTop: 6 }}>S'applique immédiatement et est enregistré localement.</div>
+            </div>
+            <div>
+              <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Imprimante Zebra (réseau)</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
+                <input
+                  aria-label="Adresse IP"
+                  placeholder="Adresse IP (ex: 192.168.1.50)"
+                  value={printerHost}
+                  onChange={(e) => setPrinterHost(e.target.value)}
+                  style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
+                />
+                <input
+                  aria-label="Port"
+                  placeholder="Port"
+                  type="number"
+                  value={printerPort}
+                  onChange={(e) => setPrinterPort(Number(e.target.value) || 9100)}
+                  style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 0 }}
+                />
+                <input
+                  aria-label="DPI"
+                  placeholder="DPI (203/300/600)"
+                  type="number"
+                  value={printerDpi}
+                  onChange={(e) => setPrinterDpi(Number(e.target.value) || 203)}
+                  style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 0 }}
+                />
+              </div>
+              <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 6 }}>Ces paramètres sont enregistrés localement dans le navigateur.</div>
+            </div>
+
+            <div>
+              <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Agent local (USB Zebra)</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{
+                  padding: '4px 10px', borderRadius: 999, fontSize: 14,
+                  background: agentAvailable ? 'var(--chip-ok-bg)' : 'var(--chip-bad-bg)',
+                  color: agentAvailable ? 'var(--chip-ok-text)' : 'var(--chip-bad-text)',
+                  border: '1px solid ' + (agentAvailable ? 'var(--chip-ok-border)' : 'var(--chip-bad-border)'),
+                }}>
+                  {agentAvailable ? 'Agent détecté' : 'Agent indisponible'}
+                </span>
+                <button type="button" onClick={probeAgent} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--panel)' }}>Rafraîchir</button>
+              </div>
+              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <select
+                  aria-label="Imprimante locale"
+                  disabled={!agentAvailable}
+                  value={agentPrinterName}
+                  onChange={(e) => setAgentPrinterName(e.target.value)}
+                  style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 240 }}
+                >
+                  <option value="">Imprimante par défaut</option>
+                  {agentPrinters.map((p) => (
+                    <option key={p.name} value={p.name}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 6 }}>L’agent écoute sur http://localhost:9110.</div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {route === '/livres/nouveau' && (
-      <section style={{ padding: 16, border: '1px solid #eee', borderRadius: 8 }}>
+      <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}>
         <h2 style={{ marginTop: 0 }}>Ajouter un livre</h2>
         <div className="add-form-wrapper" style={{ marginBottom: 12 }}>
           <input
@@ -1658,18 +1758,18 @@ export function App() {
               else if (e.key === 'Enter') { if (addHighlightIndex >= 0) { e.preventDefault(); openEditionPicker(addSuggestions[addHighlightIndex]); } }
               else if (e.key === 'Escape') { setShowAddSuggestions(false); }
             }}
-            style={{ width: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
           />
           {showEditionPicker && (
-            <div style={{ position: 'absolute', zIndex: 10, top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #ddd', borderRadius: 10, marginTop: 6, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>
+            <div style={{ position: 'absolute', zIndex: 10, top: '100%', left: 0, right: 0, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 10, marginTop: 6, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                 <strong>Choisir une édition</strong>
-                <button type="button" onMouseDown={(e) => { e.preventDefault(); setShowEditionPicker(false); }} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #ddd', background: '#f9fafb' }}>Fermer</button>
+                <button type="button" onMouseDown={(e) => { e.preventDefault(); setShowEditionPicker(false); }} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Fermer</button>
               </div>
-              {editionLoading && <div style={{ padding: 8, color: '#555' }}>Chargement des éditions…</div>}
+              {editionLoading && <div style={{ padding: 8, color: 'var(--muted)' }}>Chargement des éditions…</div>}
               {editionError && <div style={{ padding: 8, color: '#8A1F12' }}>{editionError}</div>}
               {!editionLoading && !editionError && editionOptions.length === 0 && (
-                <div style={{ padding: 8, color: '#555' }}>Aucune édition trouvée.</div>
+                <div style={{ padding: 8, color: 'var(--muted)' }}>Aucune édition trouvée.</div>
               )}
               {!editionLoading && editionOptions.length > 0 && (
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0, maxHeight: 320, overflowY: 'auto', display: 'grid', gap: 6 }}>
@@ -1679,18 +1779,18 @@ export function App() {
                     const is10 = ed.isbn10 && ed.isbn10[0];
                     const isbnText = is13 || is10 || 'ISBN indisponible';
                     return (
-                      <li key={(ed.editionKey || i) + String(isbnText)} style={{ border: '1px solid #eee', borderRadius: 8, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <li key={(ed.editionKey || i) + String(isbnText)} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                           {is13 ? (
                             <img src={`/covers/isbn/${String(is13)}?s=S`} alt="" width={30} height={44} style={{ objectFit: 'cover', borderRadius: 4 }} />
                           ) : ed.coverUrl ? (
                             <img src={ed.coverUrl} alt="" width={30} height={44} style={{ objectFit: 'cover', borderRadius: 4 }} />
                           ) : (
-                            <div style={{ width: 30, height: 44, background: '#f3f4f6', borderRadius: 4 }} />
+                            <div style={{ width: 30, height: 44, background: 'var(--card-placeholder)', borderRadius: 4 }} />
                           )}
                           <div style={{ minWidth: 0 }}>
                             <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ed.title || title}</div>
-                            <div style={{ color: '#555', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pubs || 'Éditeur inconnu'}{ed.publishDate ? ` — ${ed.publishDate}` : ''}</div>
+                            <div style={{ color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pubs || 'Éditeur inconnu'}{ed.publishDate ? ` — ${ed.publishDate}` : ''}</div>
                             <div style={{ color: '#111', fontSize: 12 }}>{isbnText}</div>
                           </div>
                         </div>
@@ -1716,7 +1816,7 @@ export function App() {
             placeholder="Titre"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
           />
           </div>
           <div className="field f-author">
@@ -1725,7 +1825,7 @@ export function App() {
             placeholder="Auteur"
             value={author}
             onChange={(e) => setAuthor(e.target.value)}
-            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
           />
           </div>
           <div className="field f-isbn">
@@ -1734,7 +1834,7 @@ export function App() {
             placeholder="ISBN (10 ou 13)"
             value={isbn}
             onChange={(e) => setIsbn(e.target.value)}
-            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
           />
           </div>
           <div className="field f-barcode">
@@ -1743,7 +1843,7 @@ export function App() {
             placeholder="Code-barres"
             value={barcode}
             onChange={(e) => setBarcode(e.target.value)}
-            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
           />
           </div>
           <div className="field f-lookup">
@@ -1781,22 +1881,22 @@ export function App() {
           </div>
         </form>
         {showAddSuggestions && addQuery.trim() !== '' && (
-          <ul role="listbox" className="add-suggest" style={{ zIndex: 10, background: 'white', border: '1px solid #eee', borderRadius: 10, marginTop: 8, listStyle: 'none', padding: 6, maxHeight: 260, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}>
-            {addLoading && <li style={{ padding: '8px 10px', color: '#555' }}>Recherche…</li>}
-            {!addLoading && addSuggestions.length === 0 && <li style={{ padding: '8px 10px', color: '#555' }}>Aucun résultat</li>}
+          <ul role="listbox" className="add-suggest" style={{ zIndex: 10, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 10, marginTop: 8, listStyle: 'none', padding: 6, maxHeight: 260, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}>
+            {addLoading && <li style={{ padding: '8px 10px', color: 'var(--muted)' }}>Recherche…</li>}
+            {!addLoading && addSuggestions.length === 0 && <li style={{ padding: '8px 10px', color: 'var(--muted)' }}>Aucun résultat</li>}
             {addSuggestions.map((s, idx) => (
               <li key={s.title + (s.isbn13 || s.isbn10 || idx)}>
-                <div role="option" aria-selected={idx === addHighlightIndex} className="add-suggest-row" style={{ gap: 12, padding: '8px 10px', borderRadius: 8, background: idx === addHighlightIndex ? '#EFF6FF' : 'transparent' }}>
+                <div role="option" aria-selected={idx === addHighlightIndex} className="add-suggest-row" style={{ gap: 12, padding: '8px 10px', borderRadius: 8, background: idx === addHighlightIndex ? 'var(--nav-active-bg)' : 'transparent' }}>
                   <div className="add-suggest-info" style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
                     { (s.isbn13 || s.isbn10) ? (
                       <img src={`/covers/isbn/${String(s.isbn13 || s.isbn10)}?s=S`} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
                     ) : (
-                      s.coverUrl ? <img src={s.coverUrl} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} /> : <div style={{ width: 36, height: 54, background: '#f3f4f6', borderRadius: 4 }} />
+                      s.coverUrl ? <img src={s.coverUrl} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} /> : <div style={{ width: 36, height: 54, background: 'var(--card-placeholder)', borderRadius: 4 }} />
                     )}
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{highlight(s.title, addQuery)}</div>
-                      <div style={{ color: '#666', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(s.authors && s.authors[0]) || ''}</div>
-                      <div style={{ color: '#666', fontSize: 12 }}>{s.isbn13 || s.isbn10 || ''}</div>
+                      <div style={{ color: 'var(--muted-2)', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(s.authors && s.authors[0]) || ''}</div>
+                      <div style={{ color: 'var(--muted-2)', fontSize: 12 }}>{s.isbn13 || s.isbn10 || ''}</div>
                     </div>
                   </div>
                   <button type="button" onMouseDown={(e) => { e.preventDefault(); openEditionPicker(s); }} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>Choisir édition</button>
@@ -1814,7 +1914,7 @@ export function App() {
       )}
 
       {route === '/livres/nouveau' && (
-      <section style={{ padding: 16, border: '1px solid #eee', borderRadius: 8 }}>
+      <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}>
         <h2 style={{ marginTop: 0 }}>Tous les livres ({visibleBooks.length})</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
           <input
@@ -1822,16 +1922,16 @@ export function App() {
             placeholder="Rechercher par titre ou auteur"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', minWidth: 240 }}
+            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 240 }}
           />
           {query.trim() && (
-            <button type="button" onClick={() => setQuery('')} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #ddd', background: '#f9fafb' }}>Effacer le filtre</button>
+            <button type="button" onClick={() => setQuery('')} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Effacer le filtre</button>
           )}
           <select
             aria-label="Filtrer par statut"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd' }}
+            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)' }}
           >
             <option value="all">Tous</option>
             <option value="read">Lus</option>
@@ -1841,7 +1941,7 @@ export function App() {
             aria-label="Trier par"
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd' }}
+            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)' }}
           >
             <option value="recent">Ajout (récent → ancien)</option>
             <option value="addedAsc">Ajout (ancien → récent)</option>
@@ -1849,8 +1949,8 @@ export function App() {
             <option value="author">Auteur (A→Z)</option>
           </select>
           <div className="bulk-print-bar" style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button type="button" onClick={() => setSelectedForPrint(new Set(visibleBooks.map((b) => b.id)))} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', background: '#f9fafb' }}>Tout sélectionner</button>
-            <button type="button" onClick={() => setSelectedForPrint(new Set())} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', background: '#f9fafb' }}>Effacer sélection</button>
+            <button type="button" onClick={() => setSelectedForPrint(new Set(visibleBooks.map((b) => b.id)))} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Tout sélectionner</button>
+            <button type="button" onClick={() => setSelectedForPrint(new Set())} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Effacer sélection</button>
             <button
               type="button"
               className="print-action"
@@ -1887,7 +1987,7 @@ export function App() {
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   padding: '10px 12px',
-                  border: '1px solid #eee',
+                    border: '1px solid var(--border)',
                   borderRadius: 8,
                 }}
               >
@@ -1907,7 +2007,7 @@ export function App() {
                   {b.isbn || b.coverUrl ? (
                     <img src={b.isbn ? `/covers/isbn/${b.isbn}?s=S` : (b.coverUrl as string)} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
                   ) : (
-                    <div style={{ width: 36, height: 54, background: '#f3f4f6', borderRadius: 4 }} />
+                    <div style={{ width: 36, height: 54, background: 'var(--card-placeholder)', borderRadius: 4 }} />
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1915,38 +2015,38 @@ export function App() {
                       <input
                         value={b.title}
                         onChange={(e) => saveBookEdit(b.id, { title: e.target.value })}
-                        style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #ddd', flex: 1, minWidth: 180 }}
+                        style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', flex: 1, minWidth: 180 }}
                       />
                     ) : (
                       <span style={{ textDecoration: b.read ? 'line-through' : 'none' }}>{b.title}</span>
                     )}
                   </div>
-                  <div style={{ color: '#555', fontSize: 14 }}>
+                  <div style={{ color: 'var(--muted)', fontSize: 14 }}>
                     {editingBookId === b.id ? (
                       <input
                         value={b.author}
                         onChange={(e) => saveBookEdit(b.id, { author: e.target.value })}
-                        style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #ddd', marginTop: 6, minWidth: 180 }}
+                        style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', marginTop: 6, minWidth: 180 }}
                       />)
                     : (
                       <>par {b.author}</>
                     )}
                   </div>
                   {(editingBookId === b.id || b.isbn || b.barcode) && (
-                    <div style={{ color: '#666', fontSize: 12, marginTop: 4 }}>
+                    <div style={{ color: 'var(--muted-2)', fontSize: 12, marginTop: 4 }}>
                       {editingBookId === b.id ? (
                         <>
                           <input
                             placeholder="ISBN"
                             value={b.isbn || ''}
                             onChange={(e) => saveBookEdit(b.id, { isbn: (e.target.value || '').replace(/[^0-9Xx]/g, '').toUpperCase() })}
-                            style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #ddd', marginRight: 6 }}
+                            style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', marginRight: 6 }}
                           />
                           <input
                             placeholder="Code-barres"
                             value={b.barcode || ''}
                             onChange={(e) => saveBookEdit(b.id, { barcode: e.target.value })}
-                            style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #ddd' }}
+                            style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)' }}
                           />
                         </>
                       ) : (
@@ -1975,7 +2075,7 @@ export function App() {
                   </button>
                   <button
                     onClick={() => setShowCardFor((id) => (id === b.id ? null : b.id))}
-                    style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #111', background: '#fff' }}
+                    style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #111', background: 'var(--panel)' }}
                     aria-expanded={showCardFor === b.id}
                   >
                     Carte
@@ -2014,7 +2114,7 @@ export function App() {
             ))}
           </ul>
           {showCardFor && (
-            <div style={{ marginTop: 12, borderTop: '1px dashed #ddd', paddingTop: 12 }}>
+            <div style={{ marginTop: 12, borderTop: '1px dashed var(--border)', paddingTop: 12 }}>
               {(() => {
                 const b = visibleBooks.find((x) => x.id === showCardFor);
                 if (!b) return null;
@@ -2027,8 +2127,8 @@ export function App() {
                       <QrPreview value={b.epc} size={180} />
                     </div>
                     <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <label style={{ fontSize: 12, color: '#333' }}>DPI</label>
-                      <select aria-label="DPI" value={printerDpi} onChange={(e) => setPrinterDpi(parseInt(e.target.value, 10))} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #ddd' }}>
+                      <label style={{ fontSize: 12, color: 'var(--muted-2)' }}>DPI</label>
+                      <select aria-label="DPI" value={printerDpi} onChange={(e) => setPrinterDpi(parseInt(e.target.value, 10))} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)' }}>
                         <option value={203}>203</option>
                         <option value={300}>300</option>
                         <option value={600}>600</option>
@@ -2046,7 +2146,7 @@ export function App() {
       )}
 
       {route === '/livres/disponibles' && (
-      <section style={{ padding: 16, border: '1px solid #eee', borderRadius: 8, position: 'relative' }}>
+      <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8, position: 'relative' }}>
         <h2 style={{ marginTop: 0 }}>Livres disponibles ({availableBooks.length})</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
           <input
@@ -2054,16 +2154,16 @@ export function App() {
             placeholder="Titre, auteur, ISBN, code-barres"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', minWidth: 240 }}
+            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 240 }}
           />
           {query.trim() && (
-            <button type="button" onClick={() => setQuery('')} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #ddd', background: '#f9fafb' }}>Effacer le filtre</button>
+            <button type="button" onClick={() => setQuery('')} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Effacer le filtre</button>
           )}
           <select
             aria-label="Trier par"
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd' }}
+            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)' }}
           >
             <option value="recent">Ajout (récent → ancien)</option>
             <option value="addedAsc">Ajout (ancien → récent)</option>
@@ -2085,8 +2185,8 @@ export function App() {
                     width: '100%',
                     textAlign: 'left',
                     cursor: 'pointer',
-                    border: '1px solid #e5e7eb',
-                    background: '#fff',
+                    border: '1px solid var(--border)',
+                    background: 'var(--panel)',
                     borderRadius: 12,
                     padding: 12,
                     display: 'grid',
@@ -2099,13 +2199,13 @@ export function App() {
                   ) : b.coverUrl ? (
                     <img src={b.coverUrl} alt="" width={48} height={72} style={{ objectFit: 'cover', borderRadius: 6 }} />
                   ) : (
-                    <div style={{ width: 48, height: 72, background: '#f3f4f6', borderRadius: 6 }} />
+                    <div style={{ width: 48, height: 72, background: 'var(--card-placeholder)', borderRadius: 6 }} />
                   )}
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.title}</div>
-                    <div style={{ color: '#555', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.author}</div>
+                    <div style={{ color: 'var(--muted)', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.author}</div>
                     {(b.isbn || b.barcode) && (
-                      <div style={{ color: '#666', fontSize: 12, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div style={{ color: 'var(--muted-2)', fontSize: 12, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {b.isbn && <span>ISBN {b.isbn}</span>}
                         {b.isbn && b.barcode && <span> · </span>}
                         {b.barcode && <span>CB {b.barcode}</span>}
@@ -2134,7 +2234,7 @@ export function App() {
           >
             <div
               onClick={(e) => e.stopPropagation()}
-              style={{ background: 'white', borderRadius: 12, padding: 16, width: 'min(560px, 92vw)', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}
+              style={{ background: 'var(--panel)', borderRadius: 12, padding: 16, width: 'min(560px, 92vw)', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}
             >
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
                 {selectedAvailableBook.isbn ? (
@@ -2142,33 +2242,33 @@ export function App() {
                 ) : selectedAvailableBook.coverUrl ? (
                   <img src={selectedAvailableBook.coverUrl} alt="" width={96} height={144} style={{ objectFit: 'cover', borderRadius: 8 }} />
                 ) : (
-                  <div style={{ width: 96, height: 144, background: '#f3f4f6', borderRadius: 8 }} />
+                  <div style={{ width: 96, height: 144, background: 'var(--card-placeholder)', borderRadius: 8 }} />
                 )}
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <h3 style={{ margin: '4px 0 6px 0' }}>{selectedAvailableBook.title}</h3>
-                  <div style={{ color: '#555', marginBottom: 8 }}>par {selectedAvailableBook.author}</div>
+                  <div style={{ color: 'var(--muted)', marginBottom: 8 }}>par {selectedAvailableBook.author}</div>
                   <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: '120px 1fr', rowGap: 6 }}>
-                    <dt style={{ color: '#666' }}>Statut</dt>
+                    <dt style={{ color: 'var(--muted-2)' }}>Statut</dt>
                     <dd style={{ margin: 0 }}>Disponible</dd>
                     {selectedAvailableBook.isbn && (
                       <>
-                        <dt style={{ color: '#666' }}>ISBN</dt>
+                        <dt style={{ color: 'var(--muted-2)' }}>ISBN</dt>
                         <dd style={{ margin: 0 }}>{selectedAvailableBook.isbn}</dd>
                       </>
                     )}
                     {selectedAvailableBook.barcode && (
                       <>
-                        <dt style={{ color: '#666' }}>Code-barres</dt>
+                        <dt style={{ color: 'var(--muted-2)' }}>Code-barres</dt>
                         <dd style={{ margin: 0 }}>{selectedAvailableBook.barcode}</dd>
                       </>
                     )}
-                    <dt style={{ color: '#666' }}>Ajouté le</dt>
+                    <dt style={{ color: 'var(--muted-2)' }}>Ajouté le</dt>
                     <dd style={{ margin: 0 }}>{new Date(selectedAvailableBook.createdAt).toLocaleDateString()}</dd>
                   </dl>
                 </div>
               </div>
               <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
-                <button type="button" onClick={() => setSelectedAvailableBook(null)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', background: '#f9fafb' }}>Fermer</button>
+                <button type="button" onClick={() => setSelectedAvailableBook(null)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Fermer</button>
               </div>
             </div>
           </div>
@@ -2177,9 +2277,9 @@ export function App() {
       )}
 
       {route === '/prets' && (
-      <section style={{ padding: 16, border: '1px solid #eee', borderRadius: 8 }}>
+      <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}>
         <h2 style={{ marginTop: 0 }}>Prêts</h2>
-        <div className="panel" style={{ padding: 16, border: '1px solid #eee', borderRadius: 12 }}>
+        <div className="panel" style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 12 }}>
           <div className="panel-title" style={{ fontWeight: 700, marginBottom: 12 }}>Nouveau prêt</div>
         <form className="loan-form form-grid"
           onSubmit={(e) => {
@@ -2189,7 +2289,7 @@ export function App() {
           style={{}}
         >
           <div className="field f-book" style={{ position: 'relative' }}>
-            <label style={{ fontSize: 12, color: '#555', marginBottom: 4 }}>Livre</label>
+            <label style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>Livre</label>
             <input
               aria-label="Livre (ISBN / code-barres / titre / auteur)"
               placeholder="Rechercher un livre…"
@@ -2219,7 +2319,7 @@ export function App() {
                   setShowBookSuggestions(false);
                 }
               }}
-              style={{ width: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
             />
             <div className="toolbar" style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
               <button
@@ -2243,17 +2343,17 @@ export function App() {
                     e.currentTarget.value = '';
                   }
                 }}
-                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #ddd', minWidth: 200 }}
+                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 200 }}
               />
               {loanScanError && <span style={{ color: '#8A1F12' }}>{loanScanError}</span>}
             </div>
             {loanScanOpen && (
               <div style={{ marginTop: 8 }}>
                 <div style={{ position: 'relative', width: 'min(520px, 100%)' }}>
-                  <video ref={loanVideoRef} muted playsInline style={{ width: '100%', borderRadius: 12, border: '1px solid #e5e7eb', background: '#000' }} />
+                  <video ref={loanVideoRef} muted playsInline style={{ width: '100%', borderRadius: 12, border: '1px solid var(--border)', background: '#000' }} />
                   <div style={{ position: 'absolute', inset: 0, border: '2px dashed rgba(255,255,255,0.6)', borderRadius: 12, pointerEvents: 'none' }} />
                 </div>
-                <small style={{ color: '#666' }}>
+                <small style={{ color: 'var(--muted-2)' }}>
                   QR (EPC) et EAN-13 (ISBN) supportés. Utilise BarcodeDetector ou ZXing en secours.
                 </small>
               </div>
@@ -2267,8 +2367,8 @@ export function App() {
                   top: '100%',
                   left: 0,
                   right: 0,
-                  background: 'white',
-                  border: '1px solid #eee',
+                  background: 'var(--panel)',
+                  border: '1px solid var(--border)',
                   borderRadius: 8,
                   marginTop: 4,
                   listStyle: 'none',
@@ -2295,12 +2395,12 @@ export function App() {
                         padding: '8px 10px',
                         borderRadius: 6,
                         border: 'none',
-                        background: idx === highlightIndex ? '#EFF6FF' : 'transparent',
+                        background: idx === highlightIndex ? 'var(--nav-active-bg)' : 'transparent',
                         cursor: 'pointer',
                       }}
                     >
                       <div style={{ fontWeight: 600 }}>{highlight(b.title, loanBookQuery.trim())}</div>
-                      <div style={{ color: '#666', fontSize: 12 }}>
+                      <div style={{ color: 'var(--muted-2)', fontSize: 12 }}>
                         {highlight(b.author, loanBookQuery.trim())}
                         {(b.isbn || b.barcode) && (
                           <>
@@ -2317,33 +2417,33 @@ export function App() {
             )}
           </div>
           <div className="field f-borrower">
-            <label style={{ fontSize: 12, color: '#555', marginBottom: 4 }}>Emprunteur</label>
+            <label style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>Emprunteur</label>
             <input
             aria-label="Emprunteur"
             placeholder="Nom de l'emprunteur"
             value={loanBorrower}
             onChange={(e) => setLoanBorrower(e.target.value)}
-            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
           />
           </div>
           <div className="field f-start">
-            <label style={{ fontSize: 12, color: '#555', marginBottom: 4 }}>Début</label>
+            <label style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>Début</label>
             <input
             type="date"
             aria-label="Date de début"
             value={loanStartDate}
             onChange={(e) => setLoanStartDate(e.target.value)}
-            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
           />
           </div>
           <div className="field f-due">
-            <label style={{ fontSize: 12, color: '#555', marginBottom: 4 }}>Échéance</label>
+            <label style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>Échéance</label>
             <input
             type="date"
             aria-label="Date d'échéance"
             value={loanDueDate}
             onChange={(e) => setLoanDueDate(e.target.value)}
-            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+            style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
           />
           </div>
           <div className="field f-submit">
@@ -2369,14 +2469,14 @@ export function App() {
               <>
                 {b.isbn ? (<img src={`/covers/isbn/${b.isbn}?s=S`} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 6 }} />)
                   : b.coverUrl ? (<img src={b.coverUrl} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 6 }} />)
-                  : (<div style={{ width: 36, height: 54, background: '#f3f4f6', borderRadius: 6 }} />)}
+                  : (<div style={{ width: 36, height: 54, background: 'var(--card-placeholder)', borderRadius: 6 }} />)}
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.title}</div>
-                  <div style={{ color: '#555', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.author}</div>
-                  <div style={{ color: '#666', fontSize: 12 }}>EPC {b.epc.slice(0,8)}…{b.epc.slice(-4)}{b.isbn ? ` · ISBN ${b.isbn}` : ''}</div>
+                  <div style={{ color: 'var(--muted)', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.author}</div>
+                  <div style={{ color: 'var(--muted-2)', fontSize: 12 }}>EPC {b.epc.slice(0,8)}…{b.epc.slice(-4)}{b.isbn ? ` · ISBN ${b.isbn}` : ''}</div>
                 </div>
                 <div style={{ marginLeft: 'auto' }}>
-                  <button type="button" onClick={() => { setLoanBookId(''); setLoanBookQuery(''); }} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #ddd', background: '#f9fafb' }}>Changer</button>
+                  <button type="button" onClick={() => { setLoanBookId(''); setLoanBookQuery(''); }} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Changer</button>
                 </div>
               </>
             ); })()}
@@ -2389,7 +2489,7 @@ export function App() {
         )}
         </div>
 
-        <div className="panel" style={{ padding: 16, border: '1px solid #eee', borderRadius: 12, marginTop: 16 }}>
+        <div className="panel" style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 12, marginTop: 16 }}>
           <div className="panel-title" style={{ fontWeight: 700, marginBottom: 8 }}>Historique des prêts</div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
@@ -2397,23 +2497,23 @@ export function App() {
             placeholder="Filtrer les prêts…"
             value={loanListQuery}
             onChange={(e) => setLoanListQuery(e.target.value)}
-            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd', minWidth: 260 }}
+            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 260 }}
           />
           <select
             aria-label="Filtrer les prêts"
             value={loanFilter}
             onChange={(e) => setLoanFilter(e.target.value as typeof loanFilter)}
-            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ddd' }}
+            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)' }}
           >
             <option value="active">En cours</option>
             <option value="overdue">En retard</option>
             <option value="returned">Rendus</option>
             <option value="all">Tous</option>
           </select>
-          <span className="chip" style={{ color: '#0E7A4D', background: '#E7F7EE', border: '1px solid #BDEBD3', padding: '4px 8px', borderRadius: 999, fontSize: 12 }}>
+          <span className="chip" style={{ color: 'var(--chip-ok-text)', background: 'var(--chip-ok-bg)', border: '1px solid var(--chip-ok-border)', padding: '4px 8px', borderRadius: 999, fontSize: 12 }}>
             {loans.filter((l) => !loanUtils.isReturned(l)).length} en cours
           </span>
-          <span className="chip" style={{ color: '#8A1F12', background: '#FDECEA', border: '1px solid #F5C6C1', padding: '4px 8px', borderRadius: 999, fontSize: 12 }}>
+          <span className="chip" style={{ color: 'var(--overdue-text)', background: 'var(--overdue-bg)', border: '1px solid var(--chip-bad-border)', padding: '4px 8px', borderRadius: 999, fontSize: 12 }}>
             {loans.filter((l) => loanUtils.isOverdue(l)).length} en retard
           </span>
         </div>
@@ -2424,27 +2524,27 @@ export function App() {
       )}
 
       {route === '/import' && (
-      <section style={{ padding: 16, border: '1px solid #eee', borderRadius: 8 }}>
+      <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}>
         <h2 style={{ marginTop: 0 }}>Import en masse</h2>
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <button
             type="button"
             onClick={() => setImportMode('lecteur')}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', background: importMode === 'lecteur' ? '#e5f3ff' : '#fff' }}
+            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: importMode === 'lecteur' ? '#e5f3ff' : 'var(--panel)' }}
           >
             Lecteur externe
           </button>
           <button
             type="button"
             onClick={async () => { setImportMode('camera'); await refreshCameraDevices(); if (!isScanning) await startCameraScan(); }}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', background: importMode === 'camera' ? '#e5f3ff' : '#fff' }}
+            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: importMode === 'camera' ? '#e5f3ff' : 'var(--panel)' }}
           >
             Caméra (expérimental)
           </button>
           <button
             type="button"
             onClick={() => setImportMode('csv')}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', background: importMode === 'csv' ? '#e5f3ff' : '#fff' }}
+            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: importMode === 'csv' ? '#e5f3ff' : 'var(--panel)' }}
           >
             CSV (titre,auteur,isbn,epc)
           </button>
@@ -2460,13 +2560,13 @@ export function App() {
               value={importInput}
               onChange={(e) => setImportInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || e.shiftKey === false)) { e.preventDefault(); addImportFromInput(); } }}
-              style={{ padding: 10, borderRadius: 8, border: '1px solid #ddd', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
+              style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
             />
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" onClick={addImportFromInput} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>Ajouter</button>
-              <button type="button" onClick={() => setImportInput('')} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', background: '#f9fafb' }}>Effacer</button>
+              <button type="button" onClick={() => setImportInput('')} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Effacer</button>
             </div>
-            <small style={{ color: '#666' }}>Astuce: la plupart des lecteurs USB émulent un clavier et envoient « Entrée » après la saisie.</small>
+            <small style={{ color: 'var(--muted-2)' }}>Astuce: la plupart des lecteurs USB émulent un clavier et envoient « Entrée » après la saisie.</small>
           </div>
         )}
 
@@ -2479,7 +2579,7 @@ export function App() {
                 <button type="button" onClick={stopCameraScan} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ef4444', background: '#ef4444', color: 'white' }}>Arrêter</button>
               )}
               {scanError && <span style={{ color: '#8A1F12' }}>{scanError}</span>}
-              <button type="button" onClick={refreshCameraDevices} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', background: '#f9fafb' }}>{loadingDevices ? 'Scan…' : 'Rafraîchir les caméras'}</button>
+              <button type="button" onClick={refreshCameraDevices} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>{loadingDevices ? 'Scan…' : 'Rafraîchir les caméras'}</button>
             </div>
             {cameraDevices.length > 0 && (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -2492,7 +2592,7 @@ export function App() {
                     setSelectedCameraId(id);
                     if (isScanning) { await stopCameraScan(); await startCameraScan(); }
                   }}
-                  style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #ddd', minWidth: 220 }}
+                  style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', minWidth: 220 }}
                 >
                   {cameraDevices.map((d, i) => (
                     <option key={d.deviceId || i} value={d.deviceId}>
@@ -2501,15 +2601,15 @@ export function App() {
                   ))}
                 </select>
                 {cameraDevices.length > 1 && (
-                  <button type="button" onClick={async () => { await cycleCamera(); }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', background: '#f9fafb' }}>Basculer</button>
+                  <button type="button" onClick={async () => { await cycleCamera(); }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Basculer</button>
                 )}
               </div>
             )}
             <div style={{ position: 'relative', width: 'min(640px, 100%)' }}>
-              <video ref={videoRef} muted playsInline style={{ width: '100%', borderRadius: 12, border: '1px solid #e5e7eb', background: '#000' }} />
+              <video ref={videoRef} muted playsInline style={{ width: '100%', borderRadius: 12, border: '1px solid var(--border)', background: '#000' }} />
               <div style={{ position: 'absolute', inset: 0, border: '2px dashed rgba(255,255,255,0.6)', borderRadius: 12, pointerEvents: 'none' }} />
             </div>
-            <small style={{ color: '#666' }}>
+            <small style={{ color: 'var(--muted-2)' }}>
               La caméra utilise BarcodeDetector quand disponible (Chrome/Edge), sinon bascule automatiquement sur ZXing (fonctionne sur Safari/Firefox).
             </small>
           </div>
@@ -2518,7 +2618,7 @@ export function App() {
         {importMode === 'csv' && (
           <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button type="button" onClick={downloadCsvExample} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', background: '#f9fafb' }}>Télécharger un exemple CSV</button>
+              <button type="button" onClick={downloadCsvExample} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Télécharger un exemple CSV</button>
               <input ref={fileInputRef} type="file" accept=".csv,text/csv" onChange={async (e) => {
                 const f = e.currentTarget.files && e.currentTarget.files[0];
                 if (!f) return;
@@ -2534,7 +2634,7 @@ export function App() {
               placeholder="title,author,isbn,epc\nMon titre,Mon auteur,978...,ABCDEF0123456789ABCDEF01"
               value={csvText}
               onChange={(e) => { setCsvText(e.target.value); parseCsv(e.target.value); }}
-              style={{ padding: 10, borderRadius: 8, border: '1px solid #ddd', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
+              style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
             />
             {csvError && <div style={{ color: '#8A1F12' }}>{csvError}</div>}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2544,12 +2644,12 @@ export function App() {
             {csvItems.length > 0 && (
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 6 }}>
                 {csvItems.map((it, i) => (
-                  <li key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, border: '1px solid #eee', borderRadius: 8, padding: '8px 10px' }}>
+                  <li key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px' }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.title} — <span style={{ fontWeight: 400 }}>{it.author}</span></div>
-                      <div style={{ color: '#555', fontSize: 12 }}>{it.isbn ? `ISBN ${it.isbn}` : 'ISBN non fourni'}{it.epc ? ` · EPC ${it.epc}` : ''}</div>
+                      <div style={{ color: 'var(--muted)', fontSize: 12 }}>{it.isbn ? `ISBN ${it.isbn}` : 'ISBN non fourni'}{it.epc ? ` · EPC ${it.epc}` : ''}</div>
                     </div>
-                    <span style={{ padding: '4px 8px', borderRadius: 999, fontSize: 12, border: '1px solid #ddd', background: it.status === 'ok' ? '#E7F7EE' : '#FDECEA', color: it.status === 'ok' ? '#0E7A4D' : '#8A1F12' }}>
+                    <span style={{ padding: '4px 8px', borderRadius: 999, fontSize: 12, border: '1px solid var(--border)', background: it.status === 'ok' ? 'var(--chip-ok-bg)' : 'var(--chip-bad-bg)', color: it.status === 'ok' ? 'var(--chip-ok-text)' : 'var(--chip-bad-text)' }}>
                       {it.status === 'ok' ? 'OK' : it.error || 'Erreur'}
                     </span>
                   </li>
@@ -2570,24 +2670,24 @@ export function App() {
         ) : (
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
             {importItems.map((it) => (
-              <li key={it.barcode} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 12px', border: '1px solid #eee', borderRadius: 8 }}>
+              <li key={it.barcode} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
                   {it.isbn ? (
                     <img src={`/covers/isbn/${it.isbn}?s=S`} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
                   ) : (
-                    <div style={{ width: 36, height: 54, background: '#f3f4f6', borderRadius: 4 }} />
+                    <div style={{ width: 36, height: 54, background: 'var(--card-placeholder)', borderRadius: 4 }} />
                   )}
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.title || '(Titre inconnu)'}</div>
-                    <div style={{ color: '#666', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.author || ''}</div>
-                    <div style={{ color: '#666', fontSize: 12 }}>CB {it.barcode}{it.isbn ? ` · ISBN ${it.isbn}` : ''}</div>
+                    <div style={{ color: 'var(--muted-2)', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.author || ''}</div>
+                    <div style={{ color: 'var(--muted-2)', fontSize: 12 }}>CB {it.barcode}{it.isbn ? ` · ISBN ${it.isbn}` : ''}</div>
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ padding: '4px 8px', borderRadius: 999, fontSize: 12, border: '1px solid #ddd', background: it.status === 'ok' ? '#E7F7EE' : it.status === 'pending' ? '#f3f4f6' : it.status === 'not_found' ? '#FEF3C7' : '#FDECEA', color: it.status === 'ok' ? '#0E7A4D' : it.status === 'not_found' ? '#8B5E00' : it.status === 'error' ? '#8A1F12' : '#333' }}>
+                  <span style={{ padding: '4px 8px', borderRadius: 999, fontSize: 12, border: '1px solid var(--border)', background: it.status === 'ok' ? 'var(--chip-ok-bg)' : it.status === 'pending' ? 'var(--card-placeholder)' : it.status === 'not_found' ? '#FEF3C7' : 'var(--chip-bad-bg)', color: it.status === 'ok' ? 'var(--chip-ok-text)' : it.status === 'not_found' ? '#8B5E00' : it.status === 'error' ? 'var(--chip-bad-text)' : 'var(--text)' }}>
                     {it.status === 'ok' ? 'OK' : it.status === 'pending' ? 'En cours' : it.status === 'not_found' ? 'Introuvable' : 'Erreur'}
                   </span>
-                  <button type="button" onClick={() => setImportItems((prev) => prev.filter((x) => x.barcode !== it.barcode))} aria-label={`Retirer ${it.barcode}`} style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid #ddd', background: '#f9fafb' }}>Retirer</button>
+                  <button type="button" onClick={() => setImportItems((prev) => prev.filter((x) => x.barcode !== it.barcode))} aria-label={`Retirer ${it.barcode}`} style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Retirer</button>
                 </div>
               </li>
             ))}
