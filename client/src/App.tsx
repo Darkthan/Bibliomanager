@@ -2740,7 +2740,6 @@ export function App() {
             </div>
             <small style={{ color: 'var(--muted-2)' }}>Astuce: la plupart des lecteurs USB émulent un clavier et envoient « Entrée » après la saisie.</small>
           </div>
-        </>
         )}
 
         {importMode === 'camera' && (
