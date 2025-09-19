@@ -2443,6 +2443,10 @@ export function App() {
           <p style={{ color: 'var(--muted)' }}>Accès restreint. Veuillez vous connecter avec un profil autorisé (Administration ou Gestion des prêts).</p>
         )}
         {canLoans && (
+        {!canLoans && (
+          <p style={{ color: 'var(--muted)' }}>Accès restreint. Veuillez vous connecter avec un profil autorisé (Administration ou Gestion des prêts).</p>
+        )}
+        {canLoans && (
         <div className="panel" style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 12 }}>
           <div className="panel-title" style={{ fontWeight: 700, marginBottom: 12 }}>Nouveau prêt</div>
         <form className="loan-form form-grid"
@@ -2694,6 +2698,7 @@ export function App() {
         {!canImport && (
           <p style={{ color: 'var(--muted)' }}>Accès restreint. Connectez-vous avec un profil Administration ou Import/Ajouts.</p>
         )}
+        {canImport && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <button
             type="button"
@@ -2860,6 +2865,7 @@ export function App() {
               </li>
             ))}
           </ul>
+        )}
         )}
       </section>
       )}
