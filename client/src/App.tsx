@@ -211,12 +211,17 @@ export function App() {
     const yAuthor = yTitle + (titleDot * titleLinesMax) + (lineGap * (titleLinesMax - 1)) + Math.round(0.6 * dpmm);
     const yShort = yAuthor + authorDot + Math.round(0.4 * dpmm);
     const sid = shortIdFromEpc(b.epc);
+    const barH = Math.max(10, Math.round(5.2 * dpmm));
+    const yBar = Math.min(h - barH - Math.round(0.6 * dpmm), yShort + idDot + Math.round(0.4 * dpmm));
     return `^XA\n^CI28\n^PW${w}\n^LL${h}\n^LH0,0\n`
       + `^RFW,H,2,6^FD${b.epc}^FS\n`
       + `^FO${xQr},${yQr}\n^BQN,2,${mag}\n^FDLA,${b.epc}^FS\n`
       + `^FO${xText},${yTitle}\n^A0N,${titleDot},${titleDot}^FB${textWidth},${titleLinesMax},${lineGap},L,0^FD${title}^FS\n`
       + `^FO${xText},${yAuthor}\n^A0N,${authorDot},${authorDot}^FB${textWidth},1,0,L,0^FD${author}^FS\n`
+      // ID en "gras" (double impression légère) + Code128 compact
       + `^FO${xText},${yShort}\n^A0N,${idDot},${idDot}^FB${textWidth},1,0,L,0^FDID: ${sid}^FS\n`
+      + `^FO${xText + 1},${yShort}\n^A0N,${idDot},${idDot}^FB${textWidth},1,0,L,0^FDID: ${sid}^FS\n`
+      + `^FO${xText},${yBar}\n^BY1,2,${barH}\n^BCN,,N,N,N\n^FD${sid}^FS\n`
       + `^XZ`;
   }
 
@@ -602,6 +607,7 @@ export function App() {
     const q = raw.toLowerCase();
     if (!q) return [];
     const qDigits = raw.replace(/[^0-9xX]/g, '').toLowerCase();
+    const qAlpha = raw.replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
     const norm = (s: string) => s.toLowerCase();
     type Scored = { book: Book; score: number };
     const scored: Scored[] = [];
@@ -610,12 +616,17 @@ export function App() {
       const a = norm(b.author);
       const i = (b.isbn || '').toLowerCase();
       const cb = (b.barcode || '').toLowerCase();
+      const sid = shortIdFromEpc(b.epc).toLowerCase();
       let score = 0;
       if (qDigits) {
         if (i.startsWith(qDigits)) score = Math.max(score, 100);
         if (cb.startsWith(qDigits)) score = Math.max(score, 95);
         if (i.includes(qDigits)) score = Math.max(score, 60);
         if (cb.includes(qDigits)) score = Math.max(score, 55);
+      }
+      if (qAlpha) {
+        if (sid.startsWith(qAlpha)) score = Math.max(score, 105);
+        else if (sid.includes(qAlpha)) score = Math.max(score, 65);
       }
       if (t.startsWith(q)) score = Math.max(score, 90);
       if (a.startsWith(q)) score = Math.max(score, 85);
@@ -635,7 +646,11 @@ export function App() {
   function selectLoanBook(b: Book) {
     setLoanBookId(b.id);
     const parts = [b.title, b.author].filter(Boolean).join(' — ');
-    const codes = [b.isbn ? `ISBN ${b.isbn}` : null, b.barcode ? `CB ${b.barcode}` : null].filter(Boolean).join(' · ');
+    const codes = [
+      b.isbn ? `ISBN ${b.isbn}` : null,
+      b.barcode ? `CB ${b.barcode}` : null,
+      `ID ${shortIdFromEpc(b.epc)}`,
+    ].filter(Boolean).join(' · ');
     setLoanBookQuery(codes ? `${parts} (${codes})` : parts);
     setShowBookSuggestions(false);
   }
@@ -945,7 +960,8 @@ export function App() {
       .text { flex: 1; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
       .title { font-weight: 700; font-size: 8pt; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .author { font-size: 7pt; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .sid { font-size: 7pt; color: #111; }
+      .sid { font-size: 7pt; color: #111; font-weight: 700; }
+      .bc { width: 22mm; height: 6mm; }
       .actions { text-align: right; padding: 6px; }
       button { padding: 6px 10px; border: 1px solid #111; background: #fff; border-radius: 6px; cursor: pointer; }
     </style>
@@ -956,12 +972,15 @@ export function App() {
           <div class="title">${title}</div>
           <div class="author">${author}</div>
           <div class="sid">ID: ${sid}</div>
+          <svg id="bc" class="bc"></svg>
         </div>
       </div>
       <div class="actions no-print"><button onclick="window.print()">Imprimer</button></div>
+      <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
       <script>
         (function(){
-          function go(){ try{ window.focus(); window.print(); }catch(e){} setTimeout(function(){ try{ window.close(); }catch(e){} }, 300); }
+          function render(){ try{ JsBarcode('#bc', '${sid}', {format:'CODE128', width:1, height:26, displayValue:false, margin:0}); }catch(e){} }
+          function go(){ render(); setTimeout(function(){ try{ window.focus(); window.print(); }catch(e){} setTimeout(function(){ try{ window.close(); }catch(e){} }, 300); }, 100); }
           var img = document.querySelector('.qr');
           if(img && !img.complete){ img.addEventListener('load', go, { once: true }); img.addEventListener('error', go, { once: true }); }
           else { go(); }
@@ -986,7 +1005,7 @@ export function App() {
       const title = (b.title || '').replace(/</g, '&lt;');
       const author = (b.author || '').replace(/</g, '&lt;');
       const sid = shortIdFromEpc(b.epc);
-      return `<div class="label"><img class="qr" src="${qr}" alt="QR" /><div class="text"><div class="title">${title}</div><div class="author">${author}</div><div class="id">ID: ${sid}</div></div></div>`;
+      return `<div class="label"><img class="qr" src="${qr}" alt="QR" /><div class="text"><div class="title">${title}</div><div class="author">${author}</div><div class="id">ID: ${sid}</div><svg class=\"bc\" data-code=\"${sid}\"></svg></div></div>`;
     }).join('');
     const html = `<!DOCTYPE html>
     <html lang="fr"><head><meta charset="utf-8" />
@@ -1001,14 +1020,20 @@ export function App() {
       .text { flex: 1; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
       .title { font-weight: 700; font-size: 8pt; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .author { font-size: 7pt; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .id { font-size: 7pt; color: #111; }
+      .id { font-size: 7pt; color: #111; font-weight: 700; }
+      .bc { width: 22mm; height: 6mm; }
       .toolbar.no-print { position: sticky; top: 0; background: #fff; padding: 8px 0; margin-bottom: 8px; border-bottom: 1px solid #eee; }
       button { padding: 8px 12px; border: 1px solid #111; background: #fff; border-radius: 8px; cursor: pointer; }
     </style>
     </head><body>
       <div class="toolbar no-print"><button onclick="window.print()">Imprimer</button></div>
       <div class="sheet">${cells}</div>
-      <script>setTimeout(function(){ try{ window.focus(); window.print(); }catch(e){} }, 200);</script>
+      <script src=\"https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js\"></script>
+      <script>(function(){
+        function render(){ try { document.querySelectorAll('.bc').forEach(function(el){ var code = el.getAttribute('data-code'); if(code){ JsBarcode(el, code, {format:'CODE128', width:1, height:26, displayValue:false, margin:0}); } }); } catch(e){} }
+        function go(){ render(); setTimeout(function(){ try{ window.focus(); window.print(); }catch(e){} }, 200); }
+        if(document.readyState === 'complete'){ go(); } else { window.addEventListener('load', go, { once: true }); }
+      })();</script>
     </body></html>`;
     w.document.open();
     w.document.write(html);
@@ -2506,8 +2531,8 @@ export function App() {
           <div className="field f-book" style={{ position: 'relative' }}>
             <label style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>Livre</label>
             <input
-              aria-label="Livre (ISBN / code-barres / titre / auteur)"
-              placeholder="Rechercher un livre…"
+              aria-label="Livre (ID court / ISBN / code-barres / titre / auteur)"
+              placeholder="Rechercher par ID, ISBN, code-barres, titre ou auteur…"
               value={loanBookQuery}
               onChange={(e) => {
                 setLoanBookQuery(e.target.value);
@@ -2518,6 +2543,20 @@ export function App() {
               onBlur={() => setTimeout(() => setShowBookSuggestions(false), 100)}
               onKeyDown={(e) => {
                 if (!showBookSuggestions && bookSuggestions.length > 0) setShowBookSuggestions(true);
+                if (e.key === 'Enter') {
+                  if (bookSuggestions.length > 0 && highlightIndex >= 0 && highlightIndex < bookSuggestions.length) {
+                    e.preventDefault();
+                    selectLoanBook(bookSuggestions[highlightIndex]);
+                    return;
+                  }
+                  // Try direct match via codes (EPC/ISBN/CB/Short ID)
+                  const b = findBookByScannedCode(loanBookQuery);
+                  if (b) {
+                    e.preventDefault();
+                    selectLoanBook(b);
+                    return;
+                  }
+                }
                 if (bookSuggestions.length === 0) return;
                 if (e.key === 'ArrowDown') {
                   e.preventDefault();
@@ -2525,11 +2564,6 @@ export function App() {
                 } else if (e.key === 'ArrowUp') {
                   e.preventDefault();
                   setHighlightIndex((i) => (i - 1 + bookSuggestions.length) % bookSuggestions.length);
-                } else if (e.key === 'Enter') {
-                  if (highlightIndex >= 0 && highlightIndex < bookSuggestions.length) {
-                    e.preventDefault();
-                    selectLoanBook(bookSuggestions[highlightIndex]);
-                  }
                 } else if (e.key === 'Escape') {
                   setShowBookSuggestions(false);
                 }
@@ -2549,7 +2583,7 @@ export function App() {
               </button>
               <input
                 aria-label="Saisie lecteur (USB)"
-                placeholder="Scanner ici (USB)…"
+                placeholder="Scanner ici (USB)… (QR EPC, ISBN EAN-13 ou ID court)"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -2569,7 +2603,7 @@ export function App() {
                   <div style={{ position: 'absolute', inset: 0, border: '2px dashed rgba(255,255,255,0.6)', borderRadius: 12, pointerEvents: 'none' }} />
                 </div>
                 <small style={{ color: 'var(--muted-2)' }}>
-                  QR (EPC) et EAN-13 (ISBN) supportés. Utilise BarcodeDetector ou ZXing en secours.
+                  QR (EPC) et EAN-13 (ISBN) supportés. Utilise BarcodeDetector ou ZXing en secours. Vous pouvez aussi saisir l’ID court à 6 caractères.
                 </small>
               </div>
             )}
@@ -2624,6 +2658,7 @@ export function App() {
                             {b.barcode ? <>CB {highlight(String(b.barcode), loanBookQuery.replace(/[^0-9xX]/g, ''))}</> : ''}
                           </>
                         )}
+                        {' '}· ID {highlight(shortIdFromEpc(b.epc), loanBookQuery.replace(/[^0-9A-Za-z]/g, ''))}
                       </div>
                     </button>
                   </li>
