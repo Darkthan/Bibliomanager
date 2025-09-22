@@ -701,6 +701,12 @@ export function App() {
       const b = books.find((x) => x.epc === epc);
       if (b) return b;
     }
+    // Short ID (6 chars base32 Crockford)
+    const sid = s.toUpperCase().replace(/\s+/g, '');
+    if (/^[0-9A-Z]{6}$/.test(sid)) {
+      const b = books.find((x) => shortIdFromEpc(x.epc) === sid);
+      if (b) return b;
+    }
     const digits = s.replace(/\D/g, '');
     if (digits.length === 13 && (digits.startsWith('978') || digits.startsWith('979'))) {
       const b = books.find((x) => (x.isbn || '').replace(/\D/g, '') === digits);
@@ -1597,7 +1603,8 @@ export function App() {
         b.title.toLowerCase().includes(q) ||
         b.author.toLowerCase().includes(q) ||
         (b.isbn || '').toLowerCase().includes(q) ||
-        (b.barcode || '').toLowerCase().includes(q)
+        (b.barcode || '').toLowerCase().includes(q) ||
+        shortIdFromEpc(b.epc).toLowerCase().includes(q)
       );
     }
     list = list.sort((a, b) => {
