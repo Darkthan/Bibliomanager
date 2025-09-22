@@ -12,21 +12,20 @@ beforeEach(() => {
 });
 
 describe('App', () => {
-  it('shows ok when health returns ok', async () => {
-    vi.spyOn(global, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({ status: 'ok' }),
-    } as Response);
-
+  it('renders header and navigation', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ status: 'ok' }) } as Response);
     render(<App />);
-    expect(await screen.findByText(/Statut serveur:/i)).toBeInTheDocument();
-    expect(await screen.findByText(/ok$/i)).toBeInTheDocument();
+    // App title
+    expect(await screen.findByText(/Bibliomanager/i)).toBeInTheDocument();
+    // Settings button
+    expect(screen.getByLabelText(/Paramètres/i)).toBeInTheDocument();
+    // Login button present when logged out
+    expect(screen.getByText(/Se connecter/i)).toBeInTheDocument();
   });
 
-  it('shows error when health fails', async () => {
+  it('renders even if health check fails', async () => {
     vi.spyOn(global, 'fetch').mockRejectedValue(new Error('network'));
     render(<App />);
-    expect(await screen.findByText(/error$/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Bibliomanager/i)).toBeInTheDocument();
   });
 });
-

@@ -44,6 +44,7 @@ describe('HTTP server', () => {
         res.on('end', () => resolve(data));
       }).on('error', reject);
     });
-    expect(text).toContain('Bibliomanager2');
+    // App name was renamed to "Bibliomanager"
+    expect(text).toContain('Bibliomanager');
   });
 });
