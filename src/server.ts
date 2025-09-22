@@ -479,13 +479,20 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         }
 
         if (!result) {
-          const params: string[] = [];
-          if (q) params.push(`q=${encodeURIComponent(q)}`);
-          if (title) params.push(`title=${encodeURIComponent(title)}`);
-          if (author) params.push(`author=${encodeURIComponent(author)}`);
-          params.push('limit=1');
-          const urlSearch = `https://openlibrary.org/search.json?${params.join('&')}`;
-          const data: any = await fetchJsonPolite(urlSearch);
+          // Fallback search: prefer ISBN search when available, else use q/title/author
+          let data: any = null;
+          if (isbn) {
+            // Direct ISBN search endpoint often succeeds even when ISBN JSON endpoint misses
+            data = await fetchJsonPolite(`https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn)}&limit=1`);
+          } else {
+            const params: string[] = [];
+            if (q) params.push(`q=${encodeURIComponent(q)}`);
+            if (title) params.push(`title=${encodeURIComponent(title)}`);
+            if (author) params.push(`author=${encodeURIComponent(author)}`);
+            params.push('limit=1');
+            const urlSearch = `https://openlibrary.org/search.json?${params.join('&')}`;
+            data = await fetchJsonPolite(urlSearch);
+          }
           const doc = data?.docs?.[0];
           if (doc) {
             const docIsbn: string | undefined = Array.isArray(doc.isbn) ? doc.isbn.find((x: string) => x && x.length >= 10) : undefined;
@@ -493,8 +500,8 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
               title: doc.title,
               authors: Array.isArray(doc.author_name) ? doc.author_name : undefined,
               isbn10: Array.isArray(doc.isbn) ? doc.isbn.find((x: string) => x.length === 10) : undefined,
-              isbn13: Array.isArray(doc.isbn) ? doc.isbn.find((x: string) => x.length === 13) : undefined,
-              coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : docIsbn ? coverByIsbn(docIsbn) : undefined,
+              isbn13: Array.isArray(doc.isbn) ? doc.isbn.find((x: string) => x.length === 13) : (isbn || undefined),
+              coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : docIsbn ? coverByIsbn(docIsbn) : (isbn ? coverByIsbn(isbn) : undefined),
               source: 'openlibrary',
             };
           }
