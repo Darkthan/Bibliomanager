@@ -12,12 +12,12 @@ RUN apt-get update \
 
 # Install dependencies
 COPY package*.json ./
-# Install all deps (need devDeps to build client/server); keep scripts so esbuild fetches binaries
-# Add some resiliency/logging to diagnose build failures
+# Install all deps (need devDeps to build client/server). Avoid npm ci to prevent
+# failing on lockfile/manifest mismatches during Portainer builds.
 ENV npm_config_update_notifier=false \
     npm_config_fund=false \
     npm_config_audit=false
-RUN npm ci --no-audit --no-fund --loglevel=info
+RUN npm install --no-audit --no-fund --loglevel=info
 
 # Build server and client
 COPY . .
