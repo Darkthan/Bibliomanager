@@ -4,10 +4,17 @@ ARG BUILD_ID=dev
 RUN echo "BUILD_ID=${BUILD_ID}"
 WORKDIR /app
 
+# Build prerequisites for any native deps (node-gyp)
+RUN apk add --no-cache python3 make g++ git
+
 # Install dependencies
 COPY package*.json ./
 # Install all deps (need devDeps to build client/server); keep scripts so esbuild fetches binaries
-RUN npm ci --no-audit --no-fund
+# Add some resiliency/logging to diagnose build failures
+ENV npm_config_update_notifier=false \
+    npm_config_fund=false \
+    npm_config_audit=false
+RUN npm ci --no-audit --no-fund --loglevel=info
 
 # Build server and client
 COPY . .
