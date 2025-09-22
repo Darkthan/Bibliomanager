@@ -172,6 +172,19 @@ export function App() {
   }, [printerHost, printerPort, printerDpi]);
 
   function escZpl(text: string) { return (text || '').replace(/[\^~]/g, ' '); }
+  function shortIdFromEpc(epc: string) {
+    try {
+      let h = 5381 >>> 0;
+      for (let i = 0; i < epc.length; i++) {
+        h = (((h << 5) + h) ^ epc.charCodeAt(i)) >>> 0; // djb2 xor
+      }
+      let v = h & 0x3fffffff; // 30 bits -> 6 chars base32
+      const alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+      let out = '';
+      for (let i = 0; i < 6; i++) { out = alphabet[v & 31] + out; v >>>= 5; }
+      return out;
+    } catch { return '000000'; }
+  }
   function buildZplLabel(b: Book, dpi: number) {
     const dpmm = dpi / 25.4;
     const w = Math.round(44 * dpmm);
@@ -190,16 +203,20 @@ export function App() {
     // Tailles de police plus petites et multi-lignes possibles pour le titre
     const titleDot = Math.max(9, Math.round(2.6 * dpmm)); // ≈2.6mm
     const authorDot = Math.max(8, Math.round(2.2 * dpmm)); // ≈2.2mm
+    const idDot = Math.max(7, Math.round(1.9 * dpmm));     // petite ligne
     const lineGap = Math.max(1, Math.round(0.4 * dpmm));
     const titleLinesMax = 2;
     const textWidth = Math.max(20, w - xText - margin);
     // Calcul d'un y pour l'auteur qui laisse la place à 2 lignes de titre
     const yAuthor = yTitle + (titleDot * titleLinesMax) + (lineGap * (titleLinesMax - 1)) + Math.round(0.6 * dpmm);
+    const yShort = yAuthor + authorDot + Math.round(0.4 * dpmm);
+    const sid = shortIdFromEpc(b.epc);
     return `^XA\n^CI28\n^PW${w}\n^LL${h}\n^LH0,0\n`
       + `^RFW,H,2,6^FD${b.epc}^FS\n`
       + `^FO${xQr},${yQr}\n^BQN,2,${mag}\n^FDLA,${b.epc}^FS\n`
       + `^FO${xText},${yTitle}\n^A0N,${titleDot},${titleDot}^FB${textWidth},${titleLinesMax},${lineGap},L,0^FD${title}^FS\n`
       + `^FO${xText},${yAuthor}\n^A0N,${authorDot},${authorDot}^FB${textWidth},1,0,L,0^FD${author}^FS\n`
+      + `^FO${xText},${yShort}\n^A0N,${idDot},${idDot}^FB${textWidth},1,0,L,0^FDID: ${sid}^FS\n`
       + `^XZ`;
   }
 
@@ -908,6 +925,7 @@ export function App() {
     if (!w) return;
     const title = (b.title || '').replace(/</g, '&lt;');
     const author = (b.author || '').replace(/</g, '&lt;');
+    const sid = shortIdFromEpc(b.epc);
     const html = `<!DOCTYPE html>
     <html lang="fr"><head><meta charset="utf-8" />
     <title>Étiquette ${title}</title>
@@ -921,6 +939,7 @@ export function App() {
       .text { flex: 1; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
       .title { font-weight: 700; font-size: 8pt; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .author { font-size: 7pt; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .sid { font-size: 7pt; color: #111; }
       .actions { text-align: right; padding: 6px; }
       button { padding: 6px 10px; border: 1px solid #111; background: #fff; border-radius: 6px; cursor: pointer; }
     </style>
@@ -930,6 +949,7 @@ export function App() {
         <div class="text">
           <div class="title">${title}</div>
           <div class="author">${author}</div>
+          <div class="sid">ID: ${sid}</div>
         </div>
       </div>
       <div class="actions no-print"><button onclick="window.print()">Imprimer</button></div>
@@ -959,7 +979,8 @@ export function App() {
     const cells = labeled.map(({ b, qr }) => {
       const title = (b.title || '').replace(/</g, '&lt;');
       const author = (b.author || '').replace(/</g, '&lt;');
-      return `<div class="label"><img class="qr" src="${qr}" alt="QR" /><div class="text"><div class="title">${title}</div><div class="author">${author}</div></div></div>`;
+      const sid = shortIdFromEpc(b.epc);
+      return `<div class="label"><img class="qr" src="${qr}" alt="QR" /><div class="text"><div class="title">${title}</div><div class="author">${author}</div><div class="id">ID: ${sid}</div></div></div>`;
     }).join('');
     const html = `<!DOCTYPE html>
     <html lang="fr"><head><meta charset="utf-8" />
@@ -974,6 +995,7 @@ export function App() {
       .text { flex: 1; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
       .title { font-weight: 700; font-size: 8pt; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .author { font-size: 7pt; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .id { font-size: 7pt; color: #111; }
       .toolbar.no-print { position: sticky; top: 0; background: #fff; padding: 8px 0; margin-bottom: 8px; border-bottom: 1px solid #eee; }
       button { padding: 8px 12px; border: 1px solid #111; background: #fff; border-radius: 8px; cursor: pointer; }
     </style>
