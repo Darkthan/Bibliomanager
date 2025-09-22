@@ -82,6 +82,8 @@ export function App() {
   const loanZxingControlsRef = React.useRef<any | null>(null);
   // Sélection pour impression en masse (sur "Tous les livres")
   const [selectedForPrint, setSelectedForPrint] = useState<Set<number>>(new Set());
+  // IDs des derniers livres importés (pour proposer une impression en masse)
+  const [lastImportedIds, setLastImportedIds] = useState<number[]>([]);
   // Suggestions pour l'ajout (base ouverte)
   const [addQuery, setAddQuery] = useState('');
   const [showAddSuggestions, setShowAddSuggestions] = useState(false);
@@ -1650,6 +1652,7 @@ export function App() {
   function importAllToLibrary() {
     const okItems = importItems.filter((it) => it.status === 'ok');
     if (okItems.length === 0) return;
+    let addedIds: number[] = [];
     setBooks((prev) => {
       const existsByIsbn = new Set(prev.map((b) => (b.isbn || '').toUpperCase()).filter(Boolean));
       const existsByBarcode = new Set(prev.map((b) => (b.barcode || '')).filter(Boolean));
@@ -1673,9 +1676,23 @@ export function App() {
         if (it.barcode) existsByBarcode.add(it.barcode);
       }
       if (toAdd.length === 0) return prev;
+      addedIds = toAdd.map((b) => b.id);
       return [...toAdd, ...prev];
     });
     setImportItems((prev) => prev.filter((it) => it.status !== 'ok'));
+    if (addedIds.length > 0) setLastImportedIds(addedIds);
+  }
+
+  async function printBatchZplNetwork(ids: number[]) {
+    if (!printerHost) { alert("Configurer l'adresse IP de l'imprimante Zebra."); return; }
+    const items = books.filter((b) => ids.includes(b.id));
+    if (items.length === 0) { alert('Aucun livre à imprimer.'); return; }
+    const zpl = items.map((b) => buildZplLabel(b, printerDpi)).join('');
+    try {
+      const r = await fetch('/api/print/zpl', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ host: printerHost, port: printerPort, zpl }) });
+      if (!r.ok) throw new Error('Envoi ZPL échoué');
+      alert(items.length + (items.length > 1 ? " étiquettes envoyées à l'imprimante." : " étiquette envoyée à l'imprimante."));
+    } catch (e: any) { alert('Erreur impression ZPL: ' + (e?.message || 'inconnue')); }
   }
 
   return (
@@ -2783,6 +2800,21 @@ export function App() {
         )}
         {canImport && (
         <>
+        {lastImportedIds.length > 0 && (
+          <div style={{ marginBottom: 12, padding: 12, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--panel)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+              <div>
+                <strong>{lastImportedIds.length}</strong> livre(s) importé(s) récemment.
+                <span style={{ color: 'var(--muted-2)' }}> Vous pouvez imprimer leurs étiquettes Zebra.</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button type="button" onClick={() => printBatchZplNetwork(lastImportedIds)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>Imprimer (réseau)</button>
+                <button type="button" onClick={() => printBatchViaLocalAgent(lastImportedIds)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Imprimer via agent local</button>
+                <button type="button" onClick={() => setLastImportedIds([])} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Masquer</button>
+              </div>
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <button
             type="button"
