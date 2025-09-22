@@ -26,6 +26,7 @@ describe('App', () => {
   it('renders even if health check fails', async () => {
     vi.spyOn(global, 'fetch').mockRejectedValue(new Error('network'));
     render(<App />);
-    expect(await screen.findByText(/Bibliomanager/i)).toBeInTheDocument();
+    const titles = await screen.findAllByText(/Bibliomanager/i);
+    expect(titles.length).toBeGreaterThan(0);
   });
 });
