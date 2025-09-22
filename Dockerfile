@@ -1,11 +1,14 @@
 # Multi-stage build for Bibliomanager
-FROM node:20-alpine AS build
+FROM node:20-bullseye-slim AS build
 ARG BUILD_ID=dev
 RUN echo "BUILD_ID=${BUILD_ID}"
 WORKDIR /app
 
-# Build prerequisites for any native deps (node-gyp)
-RUN apk add --no-cache python3 make g++ git
+# Build prerequisites for native deps (node-gyp) and certificates
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+     python3 make g++ git ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies
 COPY package*.json ./
@@ -21,7 +24,7 @@ COPY . .
 RUN npm run build
 
 # Runtime image
-FROM node:20-alpine AS runtime
+FROM node:20-bullseye-slim AS runtime
 ARG BUILD_ID=dev
 RUN echo "BUILD_ID=${BUILD_ID}"
 WORKDIR /app
