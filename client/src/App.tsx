@@ -1028,7 +1028,12 @@ export function App() {
       try {
         const r = await fetch(`/api/books/lookup?barcode=${encodeURIComponent(code)}`);
         if (!r.ok) {
-          setImportItems((prev) => prev.map((it) => (it.barcode === code ? { ...it, status: r.status === 404 ? 'not_found' : 'error', error: `HTTP ${r.status}` } : it)));
+          setImportItems((prev) => prev.map((it) => {
+            if (it.barcode !== code) return it;
+            const notFound = r.status === 404;
+            const guessedIsbn = notFound ? inferIsbnFromBarcode(code) : '';
+            return { ...it, status: notFound ? 'not_found' : 'error', error: notFound ? undefined : `HTTP ${r.status}`, isbn: guessedIsbn || it.isbn };
+          }));
           return;
         }
         const d = await r.json();
@@ -1038,6 +1043,20 @@ export function App() {
         setImportItems((prev) => prev.map((it) => (it.barcode === code ? { ...it, status: 'error', error: e?.message || 'Erreur' } : it)));
       }
     })();
+  }
+
+  function updateImportItem(code: string, patch: Partial<ImportItem>) {
+    setImportItems((prev) => prev.map((it) => (it.barcode === code ? { ...it, ...patch } : it)));
+  }
+
+  function markImportItemReady(code: string) {
+    setImportItems((prev) => prev.map((it) => {
+      if (it.barcode !== code) return it;
+      const title = (it.title || '').trim();
+      const author = (it.author || '').trim();
+      if (!title || !author) return it; // require minimal metadata
+      return { ...it, status: 'ok' };
+    }));
   }
 
   async function refreshCameraDevices() {
@@ -2844,7 +2863,7 @@ export function App() {
         ) : (
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
             {importItems.map((it) => (
-              <li key={it.barcode} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
+              <li key={it.barcode} style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 12, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
                   {it.isbn ? (
                     <img src={`/covers/isbn/${it.isbn}?s=S`} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
@@ -2852,12 +2871,55 @@ export function App() {
                     <div style={{ width: 36, height: 54, background: 'var(--card-placeholder)', borderRadius: 4 }} />
                   )}
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.title || '(Titre inconnu)'}</div>
-                    <div style={{ color: 'var(--muted-2)', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.author || ''}</div>
-                    <div style={{ color: 'var(--muted-2)', fontSize: 12 }}>CB {it.barcode}{it.isbn ? ` · ISBN ${it.isbn}` : ''}</div>
+                    {it.status === 'not_found' ? (
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <div style={{ display: 'grid', gap: 6, gridTemplateColumns: '1fr 1fr' }}>
+                          <input
+                            aria-label={`Titre pour ${it.barcode}`}
+                            placeholder="Titre"
+                            value={it.title || ''}
+                            onChange={(e) => updateImportItem(it.barcode, { title: e.target.value })}
+                            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 0 }}
+                          />
+                          <input
+                            aria-label={`Auteur pour ${it.barcode}`}
+                            placeholder="Auteur"
+                            value={it.author || ''}
+                            onChange={(e) => updateImportItem(it.barcode, { author: e.target.value })}
+                            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 0 }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <input
+                            aria-label={`ISBN pour ${it.barcode}`}
+                            placeholder="ISBN (optionnel)"
+                            value={it.isbn || ''}
+                            onChange={(e) => updateImportItem(it.barcode, { isbn: e.target.value })}
+                            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 220 }}
+                          />
+                          <div style={{ color: 'var(--muted-2)', fontSize: 12 }}>CB {it.barcode}</div>
+                        </div>
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => markImportItemReady(it.barcode)}
+                            disabled={!((it.title || '').trim() && (it.author || '').trim())}
+                            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #10b981', background: ((it.title || '').trim() && (it.author || '').trim()) ? '#10b981' : '#9ae6b4', color: 'white' }}
+                          >
+                            Marquer comme prêt
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.title || '(Titre inconnu)'}</div>
+                        <div style={{ color: 'var(--muted-2)', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.author || ''}</div>
+                        <div style={{ color: 'var(--muted-2)', fontSize: 12 }}>CB {it.barcode}{it.isbn ? ` · ISBN ${it.isbn}` : ''}</div>
+                      </>
+                    )}
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifySelf: 'end' }}>
                   <span style={{ padding: '4px 8px', borderRadius: 999, fontSize: 12, border: '1px solid var(--border)', background: it.status === 'ok' ? 'var(--chip-ok-bg)' : it.status === 'pending' ? 'var(--card-placeholder)' : it.status === 'not_found' ? '#FEF3C7' : 'var(--chip-bad-bg)', color: it.status === 'ok' ? 'var(--chip-ok-text)' : it.status === 'not_found' ? '#8B5E00' : it.status === 'error' ? 'var(--chip-bad-text)' : 'var(--text)' }}>
                     {it.status === 'ok' ? 'OK' : it.status === 'pending' ? 'En cours' : it.status === 'not_found' ? 'Introuvable' : 'Erreur'}
                   </span>
