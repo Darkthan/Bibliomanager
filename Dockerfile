@@ -1,5 +1,7 @@
 # Multi-stage build for Bibliomanager
 FROM node:20-alpine AS build
+ARG BUILD_ID=dev
+RUN echo "BUILD_ID=${BUILD_ID}"
 WORKDIR /app
 
 # Install dependencies
@@ -13,6 +15,8 @@ RUN npm run build
 
 # Runtime image
 FROM node:20-alpine AS runtime
+ARG BUILD_ID=dev
+RUN echo "BUILD_ID=${BUILD_ID}"
 WORKDIR /app
 ENV NODE_ENV=production
 
