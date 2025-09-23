@@ -1785,57 +1785,67 @@ export function App() {
       alert('Aucun livre en statut OK à importer. Vérifiez que les lignes sont marquées OK (ou éditez les "Introuvable" puis cliquez sur « Marquer comme prêt »).');
       return;
     }
-    let addedIds: number[] = [];
-    let existingMatchIds: number[] = [];
-    setBooks((prev) => {
-      const existsByIsbn = new Set(prev.map((b) => (b.isbn || '').toUpperCase()).filter(Boolean));
-      const existsByBarcode = new Set(prev.map((b) => (b.barcode || '')).filter(Boolean));
-      const toAdd: Book[] = [];
-      for (const it of okItems) {
-        const isbnUp = (it.isbn || '').toUpperCase();
-        console.log('Processing item:', it, 'isbnUp:', isbnUp);
-        console.log('existsByIsbn:', existsByIsbn, 'existsByBarcode:', existsByBarcode);
-        if ((isbnUp && existsByIsbn.has(isbnUp)) || (it.barcode && existsByBarcode.has(it.barcode))) {
-          console.log('Skipping duplicate:', it);
-          // Trouver l'ID du livre existant pour le popup
-          const existingBook = prev.find(b => 
-            (isbnUp && (b.isbn || '').toUpperCase() === isbnUp) ||
-            (it.barcode && b.barcode === it.barcode)
-          );
-          if (existingBook) {
-            existingMatchIds.push(existingBook.id);
-          }
-          continue;
+    
+    // Calculer les IDs en dehors du callback setBooks
+    const addedIds: number[] = [];
+    const existingMatchIds: number[] = [];
+    const existsByIsbn = new Set(books.map((b) => (b.isbn || '').toUpperCase()).filter(Boolean));
+    const existsByBarcode = new Set(books.map((b) => (b.barcode || '')).filter(Boolean));
+    const toAdd: Book[] = [];
+    
+    for (const it of okItems) {
+      const isbnUp = (it.isbn || '').toUpperCase();
+      console.log('Processing item:', it, 'isbnUp:', isbnUp);
+      
+      if ((isbnUp && existsByIsbn.has(isbnUp)) || (it.barcode && existsByBarcode.has(it.barcode))) {
+        console.log('Skipping duplicate:', it);
+        // Trouver l'ID du livre existant pour le popup
+        const existingBook = books.find(b => 
+          (isbnUp && (b.isbn || '').toUpperCase() === isbnUp) ||
+          (it.barcode && b.barcode === it.barcode)
+        );
+        console.log('Found existing book for duplicate:', existingBook);
+        if (existingBook) {
+          existingMatchIds.push(existingBook.id);
+          console.log('Added existing book ID to existingMatchIds:', existingBook.id);
+        } else {
+          console.log('ERROR: No existing book found but duplicate detected!');
         }
-        const coverUrl = isbnUp ? `/covers/isbn/${isbnUp}?s=M` : undefined;
-        toAdd.push({
-          id: Date.now() + Math.floor(Math.random() * 1000),
-          epc: genEpc96(),
-          title: it.title || '(Sans titre)',
-          author: it.author || '(Auteur inconnu)',
-          read: false,
-          createdAt: Date.now(),
-          isbn: isbnUp || undefined,
-          barcode: it.barcode,
-          coverUrl,
-        });
-        if (isbnUp) existsByIsbn.add(isbnUp);
-        if (it.barcode) existsByBarcode.add(it.barcode);
+        continue;
       }
-      if (toAdd.length === 0) {
-        console.log('No books to add (duplicates or empty)');
-        return prev;
-      }
-      addedIds = toAdd.map((b) => b.id);
-      console.log('Books will be added:', toAdd.length, 'addedIds:', addedIds);
-      return [...toAdd, ...prev];
-    });
-    setImportItems((prev) => prev.filter((it) => it.status !== 'ok'));
-    console.log('After setBooks, addedIds:', addedIds.length, addedIds);
+      
+      const coverUrl = isbnUp ? `/covers/isbn/${isbnUp}?s=M` : undefined;
+      const newBook: Book = {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        epc: genEpc96(),
+        title: it.title || '(Sans titre)',
+        author: it.author || '(Auteur inconnu)',
+        read: false,
+        createdAt: Date.now(),
+        isbn: isbnUp || undefined,
+        barcode: it.barcode,
+        coverUrl,
+      };
+      
+      toAdd.push(newBook);
+      addedIds.push(newBook.id);
+      if (isbnUp) existsByIsbn.add(isbnUp);
+      if (it.barcode) existsByBarcode.add(it.barcode);
+    }
+    
+    console.log('Books will be added:', toAdd.length, 'addedIds:', addedIds);
+    console.log('Existing matches found:', existingMatchIds.length, 'existingMatchIds:', existingMatchIds);
     
     // Ouvrir le popup pour nouveaux livres OU livres existants (doublons)
     const allRelevantIds = [...addedIds, ...existingMatchIds];
     console.log('All relevant IDs for popup:', allRelevantIds, 'added:', addedIds, 'existing:', existingMatchIds);
+    
+    // Ajouter les nouveaux livres
+    if (toAdd.length > 0) {
+      setBooks((prev) => [...toAdd, ...prev]);
+    }
+    
+    setImportItems((prev) => prev.filter((it) => it.status !== 'ok'));
     
     if (allRelevantIds.length > 0) {
       console.log('Opening print modal for', allRelevantIds.length, 'books');
