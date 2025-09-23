@@ -84,6 +84,10 @@ export function App() {
   const [selectedForPrint, setSelectedForPrint] = useState<Set<number>>(new Set());
   // IDs des derniers livres importés (pour proposer une impression en masse)
   const [lastImportedIds, setLastImportedIds] = useState<number[]>([]);
+  // Popup d'impression en masse
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printModalBooks, setPrintModalBooks] = useState<number[]>([]);
+  const [selectedForBatchPrint, setSelectedForBatchPrint] = useState<Set<number>>(new Set());
   // Suggestions pour l'ajout (base ouverte)
   const [addQuery, setAddQuery] = useState('');
   const [showAddSuggestions, setShowAddSuggestions] = useState(false);
@@ -1810,19 +1814,10 @@ export function App() {
     if (addedIds.length > 0) {
       setLastImportedIds(addedIds);
       try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
-      const count = addedIds.length;
-      const ask = confirm(`Import réussi: ${count} livre(s) ajouté(s).\nVoulez-vous imprimer les étiquettes maintenant ?`);
-      if (ask) {
-        if (printerHost) {
-          // Impression réseau si configurée
-          printBatchZplNetwork(addedIds);
-        } else if (agentAvailable) {
-          // Sinon via agent local si dispo
-          printBatchViaLocalAgent(addedIds);
-        } else {
-          alert("Aucune imprimante réseau configurée et agent local indisponible. Réglez l'imprimante dans Paramètres ou lancez l'agent local, ou utilisez le bandeau d'impression en haut de page.");
-        }
-      }
+      // Ouvrir le popup d'impression en masse
+      setPrintModalBooks(addedIds);
+      setSelectedForBatchPrint(new Set(addedIds)); // Tout sélectionné par défaut
+      setShowPrintModal(true);
     }
   }
 
@@ -1836,6 +1831,34 @@ export function App() {
       if (!r.ok) throw new Error('Envoi ZPL échoué');
       alert(items.length + (items.length > 1 ? " étiquettes envoyées à l'imprimante." : " étiquette envoyée à l'imprimante."));
     } catch (e: any) { alert('Erreur impression ZPL: ' + (e?.message || 'inconnue')); }
+  }
+
+  // Fonctions pour le popup d'impression en masse
+  function executeBatchPrint() {
+    const selectedIds = Array.from(selectedForBatchPrint);
+    if (selectedIds.length === 0) {
+      alert('Sélectionnez au moins un livre à imprimer.');
+      return;
+    }
+    
+    if (printerHost) {
+      // Impression réseau si configurée
+      printBatchZplNetwork(selectedIds);
+    } else if (agentAvailable) {
+      // Sinon via agent local si dispo
+      printBatchViaLocalAgent(selectedIds);
+    } else {
+      alert("Aucune imprimante réseau configurée et agent local indisponible. Réglez l'imprimante dans Paramètres ou lancez l'agent local.");
+      return;
+    }
+    
+    setShowPrintModal(false);
+  }
+
+  function closePrintModal() {
+    setShowPrintModal(false);
+    setPrintModalBooks([]);
+    setSelectedForBatchPrint(new Set());
   }
 
   return (
@@ -3454,6 +3477,173 @@ export function App() {
                   ))}
                 </select>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup d'impression en masse */}
+      {showPrintModal && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+          onClick={(e) => e.target === e.currentTarget && closePrintModal()}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--panel)',
+              borderRadius: 12,
+              padding: 24,
+              width: 'min(600px, 90vw)',
+              maxHeight: '80vh',
+              overflow: 'auto',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.3)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h2 style={{ margin: 0, fontSize: 20 }}>Impression des étiquettes</h2>
+              <button
+                onClick={closePrintModal}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: 24,
+                  cursor: 'pointer',
+                  color: 'var(--muted)',
+                  padding: 4
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <p style={{ color: 'var(--muted)', marginBottom: 16 }}>
+              {printModalBooks.length} livre(s) importé(s) avec succès. Sélectionnez ceux pour lesquels vous souhaitez imprimer des étiquettes :
+            </p>
+
+            <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => setSelectedForBatchPrint(new Set(printModalBooks))}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  background: 'var(--btn-secondary-bg)',
+                  cursor: 'pointer'
+                }}
+              >
+                Tout sélectionner
+              </button>
+              <button
+                onClick={() => setSelectedForBatchPrint(new Set())}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  background: 'var(--btn-secondary-bg)',
+                  cursor: 'pointer'
+                }}
+              >
+                Désélectionner tout
+              </button>
+            </div>
+
+            <div style={{ maxHeight: '300px', overflow: 'auto', marginBottom: 16 }}>
+              {printModalBooks.map((bookId) => {
+                const book = books.find(b => b.id === bookId);
+                if (!book) return null;
+                
+                return (
+                  <div
+                    key={bookId}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '8px 12px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 6,
+                      marginBottom: 8,
+                      background: selectedForBatchPrint.has(bookId) ? 'var(--nav-active-bg)' : 'transparent'
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedForBatchPrint.has(bookId)}
+                      onChange={(e) => {
+                        const newSet = new Set(selectedForBatchPrint);
+                        if (e.target.checked) {
+                          newSet.add(bookId);
+                        } else {
+                          newSet.delete(bookId);
+                        }
+                        setSelectedForBatchPrint(newSet);
+                      }}
+                      style={{ marginRight: 8 }}
+                    />
+                    {book.coverUrl ? (
+                      <img src={book.coverUrl} alt="" width={32} height={48} style={{ objectFit: 'cover', borderRadius: 4 }} />
+                    ) : book.isbn ? (
+                      <img src={`/covers/isbn/${book.isbn}?s=S`} alt="" width={32} height={48} style={{ objectFit: 'cover', borderRadius: 4 }} />
+                    ) : (
+                      <div style={{ width: 32, height: 48, background: 'var(--card-placeholder)', borderRadius: 4 }} />
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {book.title}
+                      </div>
+                      <div style={{ color: 'var(--muted)', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {book.author}
+                      </div>
+                      {book.isbn && (
+                        <div style={{ color: 'var(--muted-2)', fontSize: 12 }}>
+                          ISBN {book.isbn}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+              <button
+                onClick={closePrintModal}
+                style={{
+                  padding: '10px 16px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'var(--btn-secondary-bg)',
+                  cursor: 'pointer'
+                }}
+              >
+                Annuler
+              </button>
+              <button
+                onClick={executeBatchPrint}
+                disabled={selectedForBatchPrint.size === 0}
+                style={{
+                  padding: '10px 16px',
+                  borderRadius: 8,
+                  border: '1px solid var(--accent)',
+                  background: selectedForBatchPrint.size > 0 ? 'var(--accent)' : 'var(--accent-weak)',
+                  color: 'white',
+                  cursor: selectedForBatchPrint.size > 0 ? 'pointer' : 'not-allowed'
+                }}
+              >
+                Imprimer ({selectedForBatchPrint.size})
+              </button>
             </div>
           </div>
         </div>
