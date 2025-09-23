@@ -2032,10 +2032,15 @@ export function App() {
                     }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>Créer une clé</button>
                   </div>
                   {newApiKeyToken && (
-                    <div style={{ padding: 10, border: '1px solid #2563eb', background: '#e5f3ff', borderRadius: 8 }}>
+                    <div style={{
+                      padding: 10,
+                      border: `1px solid ${theme === 'dark' ? '#3b82f6' : '#2563eb'}`,
+                      background: theme === 'dark' ? 'var(--nav-active-bg)' : '#e5f3ff',
+                      borderRadius: 8,
+                    }}>
                       <div style={{ fontWeight: 700, marginBottom: 4 }}>Nouvelle clé API</div>
-                      <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', wordBreak: 'break-all' }}>{newApiKeyToken}</div>
-                      <div style={{ color: '#1e40af', fontSize: 12, marginTop: 4 }}>Copiez cette clé maintenant: elle ne sera plus affichée.</div>
+                      <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', wordBreak: 'break-all', color: theme === 'dark' ? '#DBEAFE' : undefined }}>{newApiKeyToken}</div>
+                      <div style={{ color: theme === 'dark' ? '#93c5fd' : '#1e40af', fontSize: 12, marginTop: 4 }}>Copiez cette clé maintenant: elle ne sera plus affichée.</div>
                       <div style={{ marginTop: 6 }}>
                         <button type="button" onClick={() => { try { navigator.clipboard.writeText(newApiKeyToken); alert('Clé copiée.'); } catch {} }} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Copier</button>
                         <button type="button" onClick={() => setNewApiKeyToken(null)} style={{ marginLeft: 8, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Masquer</button>
