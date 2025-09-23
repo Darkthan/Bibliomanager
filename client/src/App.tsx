@@ -96,7 +96,7 @@ export function App() {
   const [editionError, setEditionError] = useState<string | null>(null);
   // Détails visuels pour la page "Livres disponibles"
   const [selectedAvailableBook, setSelectedAvailableBook] = useState<Book | null>(null);
-  // Carte QR imprimable (page Ajouter un livre)
+  // Carte QR imprimable (page Gestion des livres)
   const [showCardFor, setShowCardFor] = useState<number | null>(null);
   // Import en masse (codes-barres)
   type ImportItem = { barcode: string; status: 'pending' | 'ok' | 'not_found' | 'error'; title?: string; author?: string; isbn?: string; coverUrl?: string; error?: string };
@@ -1806,7 +1806,7 @@ export function App() {
         <nav className={`main-nav${navOpen ? ' is-open' : ''}`} aria-label="Navigation principale" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {[
             { to: '/livres/disponibles', label: 'Livres disponibles', show: true },
-            { to: '/livres/nouveau', label: 'Ajouter un livre', show: canImport },
+            { to: '/livres/nouveau', label: 'Gestion des livres', show: canImport },
             { to: '/import', label: 'Import en masse', show: canImport },
             { to: '/prets', label: 'Prêts', show: canLoans },
             { to: '/comptes', label: 'Comptes', show: isAdmin },
@@ -1884,7 +1884,7 @@ export function App() {
             >
               <div style={{ fontSize: 28 }}>➕</div>
               <div>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>Ajouter un livre</div>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Gestion des livres</div>
                 <div style={{ color: 'var(--muted)', fontSize: 14 }}>Saisie rapide avec ISBN/CB</div>
               </div>
             </button>
@@ -2089,7 +2089,7 @@ export function App() {
 
       {route === '/livres/nouveau' && (
       <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}>
-        <h2 style={{ marginTop: 0 }}>Ajouter un livre</h2>
+        <h2 style={{ marginTop: 0 }}>Gestion des livres</h2>
         {!canImport && (
           <p style={{ color: 'var(--muted)' }}>Accès restreint. Connectez-vous avec un profil Administration ou Import/Ajouts.</p>
         )}
