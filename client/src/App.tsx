@@ -2338,10 +2338,12 @@ export function App() {
               <li key={s.title + (s.isbn13 || s.isbn10 || idx)}>
                 <div role="option" aria-selected={idx === addHighlightIndex} className="add-suggest-row" style={{ gap: 12, padding: '8px 10px', borderRadius: 8, background: idx === addHighlightIndex ? 'var(--nav-active-bg)' : 'transparent' }}>
                   <div className="add-suggest-info" style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                    { (s.isbn13 || s.isbn10) ? (
+                    { s.coverUrl ? (
+                      <img src={s.coverUrl} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
+                    ) : (s.isbn13 || s.isbn10) ? (
                       <img src={`/covers/isbn/${String(s.isbn13 || s.isbn10)}?s=S`} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
                     ) : (
-                      s.coverUrl ? <img src={s.coverUrl} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} /> : <div style={{ width: 36, height: 54, background: 'var(--card-placeholder)', borderRadius: 4 }} />
+                      <div style={{ width: 36, height: 54, background: 'var(--card-placeholder)', borderRadius: 4 }} />
                     )}
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{highlight(s.title, addQuery)}</div>
@@ -2685,10 +2687,10 @@ export function App() {
                     gap: 12,
                   }}
                 >
-                  {b.isbn ? (
-                    <img src={`/covers/isbn/${b.isbn}?s=S`} alt="" width={48} height={72} style={{ objectFit: 'cover', borderRadius: 6 }} />
-                  ) : b.coverUrl ? (
+                  {b.coverUrl ? (
                     <img src={b.coverUrl} alt="" width={48} height={72} style={{ objectFit: 'cover', borderRadius: 6 }} />
+                  ) : b.isbn ? (
+                    <img src={`/covers/isbn/${b.isbn}?s=S`} alt="" width={48} height={72} style={{ objectFit: 'cover', borderRadius: 6 }} />
                   ) : (
                     <div style={{ width: 48, height: 72, background: 'var(--card-placeholder)', borderRadius: 6 }} />
                   )}
@@ -2728,10 +2730,10 @@ export function App() {
               style={{ background: 'var(--panel)', borderRadius: 12, padding: 16, width: 'min(560px, 92vw)', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}
             >
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-                {selectedAvailableBook.isbn ? (
-                  <img src={`/covers/isbn/${selectedAvailableBook.isbn}?s=M`} alt="" width={96} height={144} style={{ objectFit: 'cover', borderRadius: 8 }} />
-                ) : selectedAvailableBook.coverUrl ? (
+                {selectedAvailableBook.coverUrl ? (
                   <img src={selectedAvailableBook.coverUrl} alt="" width={96} height={144} style={{ objectFit: 'cover', borderRadius: 8 }} />
+                ) : selectedAvailableBook.isbn ? (
+                  <img src={`/covers/isbn/${selectedAvailableBook.isbn}?s=M`} alt="" width={96} height={144} style={{ objectFit: 'cover', borderRadius: 8 }} />
                 ) : (
                   <div style={{ width: 96, height: 144, background: 'var(--card-placeholder)', borderRadius: 8 }} />
                 )}
@@ -3221,7 +3223,9 @@ export function App() {
             {importItems.map((it) => (
               <li key={it.barcode} style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 12, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                  {it.isbn ? (
+                  {it.coverUrl ? (
+                    <img src={it.coverUrl} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
+                  ) : it.isbn ? (
                     <img src={`/covers/isbn/${it.isbn}?s=S`} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
                   ) : (
                     <div style={{ width: 36, height: 54, background: 'var(--card-placeholder)', borderRadius: 4 }} />
