@@ -1256,9 +1256,17 @@ export function App() {
 
   // Fonctions pour capture photo de couverture
   async function startCoverCapture(bookId: number) {
+    console.log('startCoverCapture called with bookId:', bookId);
     setScanningCoverForBookId(bookId);
-    await refreshCameraDevices();
-    await startCoverCameraStream();
+    console.log('scanningCoverForBookId set to:', bookId);
+    
+    try {
+      await refreshCameraDevices();
+      // Ne pas démarrer automatiquement la caméra, laisser l'utilisateur le faire
+    } catch (error) {
+      console.error('Error in startCoverCapture:', error);
+      setScanError('Erreur lors de l\'ouverture de la caméra');
+    }
   }
 
   async function stopCoverCapture() {
@@ -2163,6 +2171,24 @@ export function App() {
       {route === '/livres/nouveau' && (
       <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}>
         <h2 style={{ marginTop: 0 }}>Gestion des livres</h2>
+        
+        {/* Test button for debug */}
+        <button 
+          onClick={() => {
+            console.log('Test button clicked');
+            startCoverCapture(999);
+          }}
+          style={{ 
+            padding: '10px 16px', 
+            borderRadius: 8, 
+            border: '1px solid red', 
+            background: 'red', 
+            color: 'white',
+            marginBottom: 16
+          }}
+        >
+          TEST: Ouvrir modal photo
+        </button>
         {!canImport && (
           <p style={{ color: 'var(--muted)' }}>Accès restreint. Connectez-vous avec un profil Administration ou Import/Ajouts.</p>
         )}
@@ -2740,7 +2766,7 @@ export function App() {
         )}
 
         {/* Modal de capture photo de couverture */}
-        {scanningCoverForBookId && (
+        {scanningCoverForBookId && (console.log('Rendering modal for bookId:', scanningCoverForBookId) || true) && (
           <div
             role="dialog"
             aria-modal="true"
