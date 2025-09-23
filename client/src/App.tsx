@@ -596,12 +596,33 @@ export function App() {
         if (Object.prototype.hasOwnProperty.call(patch, 'isbn')) {
           const clean = (patch.isbn || '').replace(/[^0-9Xx]/g, '').toUpperCase();
           next.isbn = clean || undefined;
-          next.coverUrl = clean ? `/covers/isbn/${clean}?s=M` : next.coverUrl;
+          // Ne pas écraser coverUrl si on a une image personnalisée (base64)
+          if (!Object.prototype.hasOwnProperty.call(patch, 'coverUrl')) {
+            next.coverUrl = clean ? `/covers/isbn/${clean}?s=M` : next.coverUrl;
+          }
         }
         return next;
       }),
     );
     setEditingBookId(null);
+  }
+
+  function updateBookData(id: number, patch: Partial<Book>) {
+    setBooks((prev) =>
+      prev.map((b) => {
+        if (b.id !== id) return b;
+        const next: Book = { ...b, ...patch } as Book;
+        if (Object.prototype.hasOwnProperty.call(patch, 'isbn')) {
+          const clean = (patch.isbn || '').replace(/[^0-9Xx]/g, '').toUpperCase();
+          next.isbn = clean || undefined;
+          // Ne pas écraser coverUrl si on a une image personnalisée (base64)
+          if (!Object.prototype.hasOwnProperty.call(patch, 'coverUrl')) {
+            next.coverUrl = clean ? `/covers/isbn/${clean}?s=M` : next.coverUrl;
+          }
+        }
+        return next;
+      }),
+    );
   }
 
   function toggleRead(id: number) {
@@ -1321,9 +1342,10 @@ export function App() {
     
     // Convertir en base64
     const imageData = canvas.toDataURL('image/jpeg', 0.8);
+    console.log('Image captured, size:', imageData.length, 'bookId:', scanningCoverForBookId);
     
-    // Mettre à jour le livre avec l'image capturée
-    saveBookEdit(scanningCoverForBookId, { coverUrl: imageData });
+    // Mettre à jour le livre avec l'image capturée (sans fermer le mode édition)
+    updateBookData(scanningCoverForBookId, { coverUrl: imageData });
     
     // Fermer le modal
     stopCoverCapture();
