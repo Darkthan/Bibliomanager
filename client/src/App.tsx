@@ -576,6 +576,13 @@ export function App() {
   }
 
   function removeBook(id: number) {
+    const book = books.find(b => b.id === id);
+    const bookTitle = book ? book.title : 'ce livre';
+    
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer "${bookTitle}" ?`)) {
+      return;
+    }
+    
     setBooks((prev) => prev.filter((b) => b.id !== id));
   }
 
