@@ -1704,6 +1704,19 @@ export function App() {
     if (addedIds.length > 0) {
       setLastImportedIds(addedIds);
       try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+      const count = addedIds.length;
+      const ask = confirm(`Import réussi: ${count} livre(s) ajouté(s).\nVoulez-vous imprimer les étiquettes maintenant ?`);
+      if (ask) {
+        if (printerHost) {
+          // Impression réseau si configurée
+          printBatchZplNetwork(addedIds);
+        } else if (agentAvailable) {
+          // Sinon via agent local si dispo
+          printBatchViaLocalAgent(addedIds);
+        } else {
+          alert("Aucune imprimante réseau configurée et agent local indisponible. Réglez l'imprimante dans Paramètres ou lancez l'agent local, ou utilisez le bandeau d'impression en haut de page.");
+        }
+      }
     }
   }
 
