@@ -1792,7 +1792,12 @@ export function App() {
       const toAdd: Book[] = [];
       for (const it of okItems) {
         const isbnUp = (it.isbn || '').toUpperCase();
-        if ((isbnUp && existsByIsbn.has(isbnUp)) || (it.barcode && existsByBarcode.has(it.barcode))) continue;
+        console.log('Processing item:', it, 'isbnUp:', isbnUp);
+        console.log('existsByIsbn:', existsByIsbn, 'existsByBarcode:', existsByBarcode);
+        if ((isbnUp && existsByIsbn.has(isbnUp)) || (it.barcode && existsByBarcode.has(it.barcode))) {
+          console.log('Skipping duplicate:', it);
+          continue;
+        }
         const coverUrl = isbnUp ? `/covers/isbn/${isbnUp}?s=M` : undefined;
         toAdd.push({
           id: Date.now() + Math.floor(Math.random() * 1000),
@@ -1808,21 +1813,27 @@ export function App() {
         if (isbnUp) existsByIsbn.add(isbnUp);
         if (it.barcode) existsByBarcode.add(it.barcode);
       }
-      if (toAdd.length === 0) return prev;
+      if (toAdd.length === 0) {
+        console.log('No books to add (duplicates or empty)');
+        return prev;
+      }
       addedIds = toAdd.map((b) => b.id);
+      console.log('Books will be added:', toAdd.length, 'addedIds:', addedIds);
       return [...toAdd, ...prev];
     });
     setImportItems((prev) => prev.filter((it) => it.status !== 'ok'));
-    if (addedIds.length > 0) {
-      console.log('Opening print modal for', addedIds.length, 'books:', addedIds);
-      setLastImportedIds(addedIds);
-      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
-      // Ouvrir le popup d'impression en masse
-      setPrintModalBooks(addedIds);
-      setSelectedForBatchPrint(new Set(addedIds)); // Tout sélectionné par défaut
-      setShowPrintModal(true);
-      console.log('Print modal should be open now');
-    }
+    console.log('After setBooks, addedIds:', addedIds.length, addedIds);
+    
+    // FORCE POPUP - pour test
+    const testIds = addedIds.length > 0 ? addedIds : [Date.now()];
+    console.log('FORCE Opening print modal for', testIds.length, 'books:', testIds);
+    setLastImportedIds(testIds);
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+    // Ouvrir le popup d'impression en masse
+    setPrintModalBooks(testIds);
+    setSelectedForBatchPrint(new Set(testIds)); // Tout sélectionné par défaut
+    setShowPrintModal(true);
+    console.log('Print modal should be open now - FORCED');
   }
 
   async function printBatchZplNetwork(ids: number[]) {
