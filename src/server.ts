@@ -77,6 +77,17 @@ function hasRequiredRole(roles: string[] | undefined | null, required: string[])
   return required.some((r) => roles.includes(r));
 }
 
+// (moved below after dataDir initialization)
+
+// --- Auth & roles (file-based) ---
+type UserRecord = { username: string; pass: string; roles: string[] };
+type SessionClaims = { u: string; r: string[]; exp: number };
+
+const dataDir = join(process.cwd(), 'data');
+const usersPath = join(dataDir, 'users.json');
+const secretPath = join(dataDir, 'auth_secret');
+
+// --- API keys persisted storage (after dataDir is defined) ---
 type ApiKeyRecord = { id: string; label?: string; hash: string; createdAt: number; lastUsedAt?: number };
 const apiKeysPath = join(dataDir, 'api_keys.json');
 
@@ -85,7 +96,9 @@ async function readApiKeys(): Promise<ApiKeyRecord[]> {
     const buf = await readFile(apiKeysPath);
     const arr = JSON.parse(buf.toString('utf-8')) as any[];
     if (Array.isArray(arr)) {
-      return arr.map((k: any) => ({ id: String(k.id), label: typeof k.label === 'string' ? k.label : undefined, hash: String(k.hash || ''), createdAt: Number(k.createdAt || 0), lastUsedAt: k.lastUsedAt ? Number(k.lastUsedAt) : undefined })).filter((x) => x.id && x.hash);
+      return arr
+        .map((k: any) => ({ id: String(k.id), label: typeof k.label === 'string' ? k.label : undefined, hash: String(k.hash || ''), createdAt: Number(k.createdAt || 0), lastUsedAt: k.lastUsedAt ? Number(k.lastUsedAt) : undefined }))
+        .filter((x) => x.id && x.hash);
     }
   } catch {}
   return [];
@@ -106,14 +119,6 @@ async function isApiKeyValid(provided: string | null | undefined): Promise<boole
   const h = sha256Hex(key);
   return list.some((k) => k.hash === h);
 }
-
-// --- Auth & roles (file-based) ---
-type UserRecord = { username: string; pass: string; roles: string[] };
-type SessionClaims = { u: string; r: string[]; exp: number };
-
-const dataDir = join(process.cwd(), 'data');
-const usersPath = join(dataDir, 'users.json');
-const secretPath = join(dataDir, 'auth_secret');
 
 async function ensureSecret(): Promise<Buffer> {
   await mkdir(dataDir, { recursive: true });
