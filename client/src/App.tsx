@@ -117,6 +117,8 @@ export function App() {
   const [loadingDevices, setLoadingDevices] = useState(false);
   // Local agent detection (HTTP on 9110)
   const [agentAvailable, setAgentAvailable] = useState(false);
+  // Scan de couverture pour un livre en édition
+  const [scanningCoverForBookId, setScanningCoverForBookId] = useState<number | null>(null);
   const [agentPrinters, setAgentPrinters] = useState<Array<{ name: string; driver?: string; default?: boolean }>>([]);
   const [agentPrinterName, setAgentPrinterName] = useState<string>('');
   // API Keys (admin)
@@ -1252,6 +1254,34 @@ export function App() {
     zxingReaderRef.current = null;
   }
 
+  // Fonctions spécialisées pour le scan de couverture
+  async function startCoverScan(bookId: number) {
+    setScanningCoverForBookId(bookId);
+    await refreshCameraDevices();
+    if (!isScanning) {
+      await startCameraScan();
+    }
+  }
+
+  async function stopCoverScan() {
+    setScanningCoverForBookId(null);
+    await stopCameraScan();
+  }
+
+  // Effect pour traiter les codes-barres scannés pendant la numérisation de couverture
+  useEffect(() => {
+    if (scanningCoverForBookId && importItems.length > 0) {
+      const latestItem = importItems[importItems.length - 1];
+      if (latestItem.status === 'ok' && latestItem.isbn) {
+        // Mettre à jour le livre avec l'ISBN scanné
+        saveBookEdit(scanningCoverForBookId, { isbn: latestItem.isbn });
+        // Arrêter le scan et nettoyer
+        stopCoverScan();
+        setImportItems([]);
+      }
+    }
+  }, [importItems, scanningCoverForBookId]);
+
   useEffect(() => {
     if (route !== '/import') stopCameraScan();
   }, [route]);
@@ -2355,10 +2385,51 @@ export function App() {
                       });
                     }}
                   />
-                  {b.isbn || b.coverUrl ? (
-                    <img src={b.isbn ? `/covers/isbn/${b.isbn}?s=S` : (b.coverUrl as string)} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
+                  {editingBookId === b.id ? (
+                    // En mode édition : couverture cliquable pour scanner
+                    <div
+                      onClick={() => startCoverScan(b.id)}
+                      style={{
+                        width: 36,
+                        height: 54,
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                        position: 'relative',
+                        border: '2px solid var(--accent)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: b.isbn || b.coverUrl ? 'transparent' : 'var(--card-placeholder)',
+                      }}
+                      title="Cliquer pour scanner la couverture"
+                    >
+                      {b.isbn || b.coverUrl ? (
+                        <img src={b.isbn ? `/covers/isbn/${b.isbn}?s=S` : (b.coverUrl as string)} alt="" width={32} height={50} style={{ objectFit: 'cover', borderRadius: 2 }} />
+                      ) : (
+                        <span style={{ fontSize: 20 }}>📷</span>
+                      )}
+                      <div style={{
+                        position: 'absolute',
+                        top: -2,
+                        right: -2,
+                        width: 12,
+                        height: 12,
+                        backgroundColor: 'var(--accent)',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 8,
+                        color: 'white'
+                      }}>📷</div>
+                    </div>
                   ) : (
-                    <div style={{ width: 36, height: 54, background: 'var(--card-placeholder)', borderRadius: 4 }} />
+                    // Mode normal : affichage simple
+                    b.isbn || b.coverUrl ? (
+                      <img src={b.isbn ? `/covers/isbn/${b.isbn}?s=S` : (b.coverUrl as string)} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
+                    ) : (
+                      <div style={{ width: 36, height: 54, background: 'var(--card-placeholder)', borderRadius: 4 }} />
+                    )
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -2620,6 +2691,129 @@ export function App() {
               </div>
               <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
                 <button type="button" onClick={() => setSelectedAvailableBook(null)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Fermer</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de scan de couverture */}
+        {scanningCoverForBookId && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={() => stopCoverScan()}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.8)',
+              display: 'grid',
+              placeItems: 'center',
+              padding: 16,
+              zIndex: 1000,
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{ 
+                background: 'var(--panel)', 
+                borderRadius: 12, 
+                padding: 20, 
+                width: 'min(480px, 92vw)', 
+                boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+                textAlign: 'center'
+              }}
+            >
+              <h3 style={{ marginTop: 0, marginBottom: 16 }}>Scanner la couverture du livre</h3>
+              <p style={{ color: 'var(--muted)', marginBottom: 20 }}>
+                Placez le code-barres ISBN de la couverture devant la caméra pour mettre à jour automatiquement la couverture du livre.
+              </p>
+              
+              {importMode !== 'camera' && (
+                <div style={{ marginBottom: 16 }}>
+                  <button 
+                    type="button"
+                    onClick={async () => {
+                      setImportMode('camera');
+                      await refreshCameraDevices();
+                    }}
+                    style={{ 
+                      padding: '12px 20px', 
+                      borderRadius: 8, 
+                      border: '1px solid var(--accent)', 
+                      background: 'var(--accent)', 
+                      color: 'white',
+                      fontSize: 16,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Activer la caméra
+                  </button>
+                </div>
+              )}
+
+              {importMode === 'camera' && (
+                <div style={{ marginBottom: 16 }}>
+                  <video
+                    ref={videoRef}
+                    style={{
+                      width: '100%',
+                      maxWidth: 400,
+                      height: 240,
+                      borderRadius: 8,
+                      border: '2px solid var(--accent)',
+                      backgroundColor: '#000'
+                    }}
+                    autoPlay
+                    muted
+                    playsInline
+                  />
+                  {scanError && (
+                    <div style={{ color: 'var(--danger)', marginTop: 8, fontSize: 14 }}>
+                      {scanError}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button 
+                  type="button" 
+                  onClick={() => stopCoverScan()} 
+                  style={{ 
+                    padding: '10px 16px', 
+                    borderRadius: 8, 
+                    border: '1px solid var(--border)', 
+                    background: 'var(--btn-secondary-bg)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Annuler
+                </button>
+                {cameraDevices.length > 1 && (
+                  <select
+                    value={selectedCameraId}
+                    onChange={async (e) => {
+                      const id = e.target.value;
+                      setSelectedCameraId(id);
+                      if (isScanning) { 
+                        await stopCameraScan(); 
+                        await startCameraScan(); 
+                      }
+                    }}
+                    style={{ 
+                      padding: '10px 12px', 
+                      borderRadius: 8, 
+                      border: '1px solid var(--border)',
+                      background: 'var(--panel)'
+                    }}
+                  >
+                    {cameraDevices.map((d, i) => (
+                      <option key={d.deviceId || i} value={d.deviceId}>
+                        {(d.label && d.label.trim()) || `Caméra ${i + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             </div>
           </div>
