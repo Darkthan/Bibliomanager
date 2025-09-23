@@ -1778,9 +1778,11 @@ export function App() {
   }
 
   function importAllToLibrary() {
+    console.log('importAllToLibrary called', { importItems });
     const okItems = importItems.filter((it) => it.status === 'ok');
+    console.log('okItems found:', okItems.length, okItems);
     if (okItems.length === 0) {
-      alert('Aucun livre en statut OK à importer. Vérifiez que les lignes sont marquées OK (ou éditez les “Introuvable” puis cliquez sur « Marquer comme prêt »).');
+      alert('Aucun livre en statut OK à importer. Vérifiez que les lignes sont marquées OK (ou éditez les "Introuvable" puis cliquez sur « Marquer comme prêt »).');
       return;
     }
     let addedIds: number[] = [];
@@ -1812,12 +1814,14 @@ export function App() {
     });
     setImportItems((prev) => prev.filter((it) => it.status !== 'ok'));
     if (addedIds.length > 0) {
+      console.log('Opening print modal for', addedIds.length, 'books:', addedIds);
       setLastImportedIds(addedIds);
       try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
       // Ouvrir le popup d'impression en masse
       setPrintModalBooks(addedIds);
       setSelectedForBatchPrint(new Set(addedIds)); // Tout sélectionné par défaut
       setShowPrintModal(true);
+      console.log('Print modal should be open now');
     }
   }
 
@@ -3233,11 +3237,25 @@ export function App() {
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
           <h3 style={{ margin: 0 }}>À importer ({importItems.length})</h3>
-          <button type="button" onClick={importAllToLibrary} disabled={importItems.every((it) => it.status !== 'ok')} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--success)', background: importItems.some((it) => it.status === 'ok') ? 'var(--success)' : '#9ae6b4', color: 'white' }}>
-            Importer les livres OK ({importItems.filter((it) => it.status === 'ok').length})
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button 
+              type="button" 
+              onClick={() => {
+                console.log('Test popup button clicked');
+                setPrintModalBooks([1, 2, 3]); // IDs de test
+                setSelectedForBatchPrint(new Set([1, 2, 3]));
+                setShowPrintModal(true);
+              }}
+              style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}
+            >
+              Test Popup
+            </button>
+            <button type="button" onClick={importAllToLibrary} disabled={importItems.every((it) => it.status !== 'ok')} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--success)', background: importItems.some((it) => it.status === 'ok') ? 'var(--success)' : '#9ae6b4', color: 'white' }}>
+              Importer les livres OK ({importItems.filter((it) => it.status === 'ok').length})
+            </button>
+          </div>
         </div>
         {importItems.length === 0 ? (
           <p>Aucun élément en file d'import.</p>
@@ -3483,7 +3501,7 @@ export function App() {
       )}
 
       {/* Popup d'impression en masse */}
-      {showPrintModal && (
+      {showPrintModal && (console.log('Rendering print modal', { showPrintModal, printModalBooks })) && (
         <div 
           style={{
             position: 'fixed',
