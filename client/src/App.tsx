@@ -2468,12 +2468,12 @@ export function App() {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        backgroundColor: b.isbn || b.coverUrl ? 'transparent' : 'var(--card-placeholder)',
+                        backgroundColor: b.coverUrl || b.isbn ? 'transparent' : 'var(--card-placeholder)',
                       }}
                       title="Cliquer pour prendre une photo de la couverture"
                     >
-                      {b.isbn || b.coverUrl ? (
-                        <img src={b.isbn ? `/covers/isbn/${b.isbn}?s=S` : (b.coverUrl as string)} alt="" width={32} height={50} style={{ objectFit: 'cover', borderRadius: 2 }} />
+                      {b.coverUrl || b.isbn ? (
+                        <img src={b.coverUrl || (b.isbn ? `/covers/isbn/${b.isbn}?s=S` : '')} alt="" width={32} height={50} style={{ objectFit: 'cover', borderRadius: 2 }} />
                       ) : (
                         <span style={{ fontSize: 20 }}>📷</span>
                       )}
@@ -2494,8 +2494,8 @@ export function App() {
                     </div>
                   ) : (
                     // Mode normal : affichage simple
-                    b.isbn || b.coverUrl ? (
-                      <img src={b.isbn ? `/covers/isbn/${b.isbn}?s=S` : (b.coverUrl as string)} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
+                    b.coverUrl || b.isbn ? (
+                      <img src={b.coverUrl || (b.isbn ? `/covers/isbn/${b.isbn}?s=S` : '')} alt="" width={36} height={54} style={{ objectFit: 'cover', borderRadius: 4 }} />
                     ) : (
                       <div style={{ width: 36, height: 54, background: 'var(--card-placeholder)', borderRadius: 4 }} />
                     )
