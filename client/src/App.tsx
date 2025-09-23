@@ -220,8 +220,20 @@ export function App() {
     const qrSideMm = 17.0;
     const approxQrDots = Math.round(qrSideMm * dpmm);
     const mag = dpi >= 600 ? 3 : dpi >= 300 ? 4 : 5;
-    const title = escZpl(b.title);
-    const author = escZpl(b.author);
+    // Tronquer le titre s'il est trop long pour 2 lignes (estimation ~25 chars par ligne)
+    let title = b.title;
+    if (title.length > 50) {
+      title = title.substring(0, 47) + '...';
+    }
+    title = escZpl(title);
+    
+    // Tronquer l'auteur s'il est trop long pour 2 lignes (estimation ~25 chars par ligne)
+    let author = b.author;
+    if (author.length > 50) {
+      author = author.substring(0, 47) + '...';
+    }
+    author = escZpl(author);
+    
     const xQr = margin;
     const yQr = Math.max(0, Math.round((h - approxQrDots) / 2));
     const xText = xQr + approxQrDots + Math.round(1.8 * dpmm);
@@ -232,10 +244,11 @@ export function App() {
     const idDot = Math.max(7, Math.round(1.9 * dpmm));     // petite ligne
     const lineGap = Math.max(1, Math.round(0.4 * dpmm));
     const titleLinesMax = 2;
+    const authorLinesMax = 2;
     const textWidth = Math.max(20, w - xText - margin);
     // Calcul d'un y pour l'auteur qui laisse la place à 2 lignes de titre
-    const yAuthor = yTitle + (titleDot * titleLinesMax) + (lineGap * (titleLinesMax - 1)) + Math.round(0.6 * dpmm);
-    const yShort = yAuthor + authorDot + Math.round(0.4 * dpmm);
+    const yAuthor = yTitle + (titleDot * titleLinesMax) + (lineGap * (titleLinesMax - 1)) + Math.round(0.3 * dpmm);
+    const yShort = yAuthor + (authorDot * authorLinesMax) + (lineGap * (authorLinesMax - 1)) + Math.round(0.4 * dpmm);
     const sid = shortIdFromEpc(b.epc);
     const barH = Math.max(10, Math.round(5.2 * dpmm));
     const yBar = Math.min(h - barH - Math.round(0.6 * dpmm), yShort + idDot + Math.round(0.4 * dpmm));
@@ -243,7 +256,7 @@ export function App() {
       + `^RFW,H,2,6^FD${b.epc}^FS\n`
       + `^FO${xQr},${yQr}\n^BQN,2,${mag}\n^FDLA,${b.epc}^FS\n`
       + `^FO${xText},${yTitle}\n^A0N,${titleDot},${titleDot}^FB${textWidth},${titleLinesMax},${lineGap},L,0^FD${title}^FS\n`
-      + `^FO${xText},${yAuthor}\n^A0N,${authorDot},${authorDot}^FB${textWidth},1,0,L,0^FD${author}^FS\n`
+      + `^FO${xText},${yAuthor}\n^A0N,${authorDot},${authorDot}^FB${textWidth},${authorLinesMax},${lineGap},L,0^FD${author}^FS\n`
       // ID en "gras" (double impression légère) + Code128 compact
       + `^FO${xText},${yShort}\n^A0N,${idDot},${idDot}^FB${textWidth},1,0,L,0^FDID: ${sid}^FS\n`
       + `^FO${xText + 1},${yShort}\n^A0N,${idDot},${idDot}^FB${textWidth},1,0,L,0^FDID: ${sid}^FS\n`
