@@ -63,6 +63,20 @@ function sendText(res: ServerResponse, status: number, body: string) {
   res.end(body);
 }
 
+// --- API key handling ---
+function getApiKeys(): string[] {
+  const env = String(process.env.API_KEYS || process.env.API_KEY || '').trim();
+  if (!env) return [];
+  return env.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+function hasRequiredRole(roles: string[] | undefined | null, required: string[]): boolean {
+  if (!required || required.length === 0) return Array.isArray(roles) && roles.length > 0;
+  if (!Array.isArray(roles)) return false;
+  if (roles.includes('admin')) return true;
+  return required.some((r) => roles.includes(r));
+}
+
 // --- Auth & roles (file-based) ---
 type UserRecord = { username: string; pass: string; roles: string[] };
 type SessionClaims = { u: string; r: string[]; exp: number };
@@ -181,6 +195,9 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
   const method = req.method || 'GET';
   const host = (req.headers.host as string) || 'localhost';
   const url = new URL(req.url || '/', `http://${host}`);
+  const apiKeys = getApiKeys();
+  const apiKeyFromReq = ((req.headers['x-api-key'] as string) || url.searchParams.get('api_key') || '').trim();
+  const apiKeyValid = apiKeyFromReq && apiKeys.includes(apiKeyFromReq);
 
   if (method === 'GET' && url.pathname === '/health') {
     return sendJSON(res, 200, { status: 'ok' });
@@ -210,6 +227,11 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
   if (method === 'GET' && url.pathname === '/api/state') {
     (async () => {
       try {
+        // Require session or API key for reading state
+        const cookies = parseCookies(req);
+        const token = cookies['bm2_auth'] || '';
+        const claims = token ? await verifyToken(token) : null;
+        if (!claims && !apiKeyValid) return sendJSON(res, 401, { error: 'unauthorized' });
         const state = await readState();
         return sendJSON(res, 200, state);
       } catch (e: any) {
@@ -223,13 +245,12 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
   if (method === 'POST' && url.pathname === '/api/state') {
     (async () => {
       try {
-        // Require authenticated role (admin/import/loans)
+        // Require authenticated role (admin/import/loans) or valid API key
         const cookies = parseCookies(req);
         const token = cookies['bm2_auth'] || '';
         const claims = token ? await verifyToken(token) : null;
-        if (!claims || !Array.isArray(claims.r) || !claims.r.some((r) => r === 'admin' || r === 'import' || r === 'loans')) {
-          return sendJSON(res, 401, { error: 'unauthorized' });
-        }
+        const ok = apiKeyValid || hasRequiredRole(claims?.r, ['import', 'loans']);
+        if (!ok) return sendJSON(res, 401, { error: 'unauthorized' });
         const chunks: Buffer[] = [];
         let size = 0;
         await new Promise<void>((resolve, reject) => {
@@ -302,7 +323,7 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
       const cookies = parseCookies(req);
       const token = cookies['bm2_auth'] || '';
       const claims = token ? await verifyToken(token) : null;
-      if (!claims || !claims.r.includes('admin')) return sendJSON(res, 401, { error: 'unauthorized' });
+      if (!apiKeyValid && (!claims || !claims.r.includes('admin'))) return sendJSON(res, 401, { error: 'unauthorized' });
       const users = await readUsers();
       if (method === 'GET' && url.pathname === '/api/users') {
         const safe = users.map((u) => ({ username: u.username, roles: u.roles || [] }));
@@ -355,6 +376,12 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
   if (method === 'POST' && url.pathname === '/api/print/zpl') {
     (async () => {
       try {
+        // Require authenticated role (admin/import) or valid API key
+        const cookies = parseCookies(req);
+        const token = cookies['bm2_auth'] || '';
+        const claims = token ? await verifyToken(token) : null;
+        const ok = apiKeyValid || hasRequiredRole(claims?.r, ['import']);
+        if (!ok) return sendJSON(res, 401, { error: 'unauthorized' });
         const chunks: Buffer[] = [];
         await new Promise<void>((resolve, reject) => {
           req.on('data', (c) => chunks.push(c as Buffer));
@@ -411,6 +438,11 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
   if (method === 'GET' && url.pathname === '/api/books/lookup') {
     (async () => {
       try {
+        // Require login or API key
+        const cookies = parseCookies(req);
+        const token = cookies['bm2_auth'] || '';
+        const claims = token ? await verifyToken(token) : null;
+        if (!claims && !apiKeyValid) return sendJSON(res, 401, { error: 'unauthorized' });
         const qp = url.searchParams;
         const rawIsbn = (qp.get('isbn') || '').replace(/[^0-9Xx]/g, '').toUpperCase();
         const barcode = (qp.get('barcode') || '').trim();
@@ -520,6 +552,10 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
   if (method === 'GET' && url.pathname === '/api/books/search') {
     (async () => {
       try {
+        const cookies = parseCookies(req);
+        const token = cookies['bm2_auth'] || '';
+        const claims = token ? await verifyToken(token) : null;
+        if (!claims && !apiKeyValid) return sendJSON(res, 401, { error: 'unauthorized' });
         const q = (url.searchParams.get('q') || '').trim();
         if (!q) return sendJSON(res, 400, { error: 'missing_q' });
 
@@ -575,6 +611,10 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
   if (method === 'GET' && url.pathname === '/api/books/editions') {
     (async () => {
       try {
+        const cookies = parseCookies(req);
+        const token = cookies['bm2_auth'] || '';
+        const claims = token ? await verifyToken(token) : null;
+        if (!claims && !apiKeyValid) return sendJSON(res, 401, { error: 'unauthorized' });
         const work = (url.searchParams.get('work') || '').trim();
         const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '20', 10) || 20, 1), 50);
         if (!work) return sendJSON(res, 400, { error: 'missing_work' });

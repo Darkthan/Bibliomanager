@@ -1651,7 +1651,10 @@ export function App() {
 
   function importAllToLibrary() {
     const okItems = importItems.filter((it) => it.status === 'ok');
-    if (okItems.length === 0) return;
+    if (okItems.length === 0) {
+      alert('Aucun livre en statut OK à importer. Vérifiez que les lignes sont marquées OK (ou éditez les “Introuvable” puis cliquez sur « Marquer comme prêt »).');
+      return;
+    }
     let addedIds: number[] = [];
     setBooks((prev) => {
       const existsByIsbn = new Set(prev.map((b) => (b.isbn || '').toUpperCase()).filter(Boolean));
@@ -1680,7 +1683,10 @@ export function App() {
       return [...toAdd, ...prev];
     });
     setImportItems((prev) => prev.filter((it) => it.status !== 'ok'));
-    if (addedIds.length > 0) setLastImportedIds(addedIds);
+    if (addedIds.length > 0) {
+      setLastImportedIds(addedIds);
+      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+    }
   }
 
   async function printBatchZplNetwork(ids: number[]) {

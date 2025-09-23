@@ -1,6 +1,17 @@
 {
   "books": [
     {
+      "id": 1758554158886,
+      "epc": "A1A08CCCE2396285A5B86D3E",
+      "title": "Les Misérables",
+      "author": "Victor Hugo",
+      "read": false,
+      "createdAt": 1758554158209,
+      "isbn": "9782401078468",
+      "barcode": "9782401078468",
+      "coverUrl": "/covers/isbn/9782401078468?s=M"
+    },
+    {
       "id": 1758266264951,
       "epc": "D123AA32D3F48A6B5CD86C17",
       "title": "Les Misérables",
@@ -9,16 +20,6 @@
       "createdAt": 1758266264951,
       "isbn": "9780241248744",
       "coverUrl": "/covers/isbn/9780241248744?s=M"
-    },
-    {
-      "id": 1758264389678,
-      "epc": "75113C7FC8D5D89949AA553B",
-      "title": "Les Misérables",
-      "author": "Victor Hugo",
-      "read": false,
-      "createdAt": 1758264389678,
-      "isbn": "9782401078468",
-      "coverUrl": "/covers/isbn/9782401078468?s=M"
     },
     {
       "id": 1758196787687,
