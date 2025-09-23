@@ -119,6 +119,11 @@ export function App() {
   const [agentAvailable, setAgentAvailable] = useState(false);
   const [agentPrinters, setAgentPrinters] = useState<Array<{ name: string; driver?: string; default?: boolean }>>([]);
   const [agentPrinterName, setAgentPrinterName] = useState<string>('');
+  // API Keys (admin)
+  type ApiKey = { id: string; label?: string; createdAt: number };
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+  const [apiKeyLabel, setApiKeyLabel] = useState('');
+  const [newApiKeyToken, setNewApiKeyToken] = useState<string | null>(null);
   async function probeAgent() {
     try {
       const c = await Promise.race([
@@ -131,6 +136,19 @@ export function App() {
   useEffect(() => { probeAgent(); }, []);
   useEffect(() => { try { const v = localStorage.getItem('bm2/agentPrinter'); if (v) setAgentPrinterName(v); } catch {} }, []);
   useEffect(() => { try { localStorage.setItem('bm2/agentPrinter', agentPrinterName); } catch {} }, [agentPrinterName]);
+  // Load API keys for admin
+  useEffect(() => {
+    (async () => {
+      if (!isAdmin) return;
+      try {
+        const r = await fetch('/api/apikeys', { cache: 'no-store' });
+        if (r.ok) {
+          const d = await r.json();
+          if (Array.isArray(d.keys)) setApiKeys(d.keys);
+        }
+      } catch {}
+    })();
+  }, [isAdmin]);
   // Récupère la session
   useEffect(() => {
     (async () => {
@@ -1977,6 +1995,56 @@ export function App() {
               </div>
               <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 6 }}>L’agent écoute sur http://localhost:9110.</div>
             </div>
+
+            {isAdmin && (
+              <div>
+                <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Clés API</div>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {apiKeys.length === 0 ? (
+                    <div style={{ color: 'var(--muted)' }}>Aucune clé définie.</div>
+                  ) : (
+                    <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
+                      {apiKeys.map((k) => (
+                        <li key={k.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px' }}>
+                          <div>
+                            <div style={{ fontWeight: 600 }}>{k.label || '(sans libellé)'}</div>
+                            <div style={{ color: 'var(--muted-2)', fontSize: 12 }}>Créée le {new Date(k.createdAt).toLocaleString()}</div>
+                          </div>
+                          <button type="button" onClick={async () => {
+                            if (!confirm('Révoquer cette clé ?')) return;
+                            try { const r = await fetch(`/api/apikeys/${encodeURIComponent(k.id)}`, { method: 'DELETE' }); if (r.ok) setApiKeys((prev) => prev.filter((x) => x.id !== k.id)); } catch {}
+                          }} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Révoquer</button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input aria-label="Libellé de la clé" placeholder="Libellé (optionnel)" value={apiKeyLabel} onChange={(e) => setApiKeyLabel(e.target.value)} style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 260 }} />
+                    <button type="button" onClick={async () => {
+                      try {
+                        const r = await fetch('/api/apikeys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label: apiKeyLabel || undefined }) });
+                        if (!r.ok) throw new Error('Création échouée');
+                        const d = await r.json();
+                        setNewApiKeyToken(d.token || '')
+                        setApiKeyLabel('');
+                        const rl = await fetch('/api/apikeys'); if (rl.ok) { const dj = await rl.json(); if (Array.isArray(dj.keys)) setApiKeys(dj.keys); }
+                      } catch (e: any) { alert(e?.message || 'Erreur création clé'); }
+                    }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>Créer une clé</button>
+                  </div>
+                  {newApiKeyToken && (
+                    <div style={{ padding: 10, border: '1px solid #2563eb', background: '#e5f3ff', borderRadius: 8 }}>
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>Nouvelle clé API</div>
+                      <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', wordBreak: 'break-all' }}>{newApiKeyToken}</div>
+                      <div style={{ color: '#1e40af', fontSize: 12, marginTop: 4 }}>Copiez cette clé maintenant: elle ne sera plus affichée.</div>
+                      <div style={{ marginTop: 6 }}>
+                        <button type="button" onClick={() => { try { navigator.clipboard.writeText(newApiKeyToken); alert('Clé copiée.'); } catch {} }} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Copier</button>
+                        <button type="button" onClick={() => setNewApiKeyToken(null)} style={{ marginLeft: 8, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Masquer</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </section>
       )}

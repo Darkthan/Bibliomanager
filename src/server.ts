@@ -3,7 +3,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { mkdir, writeFile as fsWriteFile, stat as fsStat } from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
-import { randomBytes, timingSafeEqual, createHmac, scrypt as _scrypt } from 'node:crypto';
+import { randomBytes, timingSafeEqual, createHmac, scrypt as _scrypt, createHash } from 'node:crypto';
 import net from 'node:net';
 
 // Simple in-memory cache + polite rate limiting for Open Library
@@ -75,6 +75,36 @@ function hasRequiredRole(roles: string[] | undefined | null, required: string[])
   if (!Array.isArray(roles)) return false;
   if (roles.includes('admin')) return true;
   return required.some((r) => roles.includes(r));
+}
+
+type ApiKeyRecord = { id: string; label?: string; hash: string; createdAt: number; lastUsedAt?: number };
+const apiKeysPath = join(dataDir, 'api_keys.json');
+
+async function readApiKeys(): Promise<ApiKeyRecord[]> {
+  try {
+    const buf = await readFile(apiKeysPath);
+    const arr = JSON.parse(buf.toString('utf-8')) as any[];
+    if (Array.isArray(arr)) {
+      return arr.map((k: any) => ({ id: String(k.id), label: typeof k.label === 'string' ? k.label : undefined, hash: String(k.hash || ''), createdAt: Number(k.createdAt || 0), lastUsedAt: k.lastUsedAt ? Number(k.lastUsedAt) : undefined })).filter((x) => x.id && x.hash);
+    }
+  } catch {}
+  return [];
+}
+async function writeApiKeys(keys: ApiKeyRecord[]) {
+  await mkdir(dataDir, { recursive: true });
+  await fsWriteFile(apiKeysPath, JSON.stringify(keys, null, 2));
+}
+function sha256Hex(s: string): string {
+  return createHash('sha256').update(s, 'utf8').digest('hex');
+}
+async function isApiKeyValid(provided: string | null | undefined): Promise<boolean> {
+  const key = (provided || '').trim();
+  if (!key) return false;
+  const envs = getApiKeys();
+  if (envs.includes(key)) return true;
+  const list = await readApiKeys();
+  const h = sha256Hex(key);
+  return list.some((k) => k.hash === h);
 }
 
 // --- Auth & roles (file-based) ---
@@ -195,12 +225,66 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
   const method = req.method || 'GET';
   const host = (req.headers.host as string) || 'localhost';
   const url = new URL(req.url || '/', `http://${host}`);
-  const apiKeys = getApiKeys();
   const apiKeyFromReq = ((req.headers['x-api-key'] as string) || url.searchParams.get('api_key') || '').trim();
-  const apiKeyValid = apiKeyFromReq && apiKeys.includes(apiKeyFromReq);
 
   if (method === 'GET' && url.pathname === '/health') {
     return sendJSON(res, 200, { status: 'ok' });
+  }
+
+  // API Keys management (admin session only; API key cannot manage keys)
+  if (url.pathname.startsWith('/api/apikeys')) {
+    (async () => {
+      const cookies = parseCookies(req);
+      const token = cookies['bm2_auth'] || '';
+      const claims = token ? await verifyToken(token) : null;
+      if (!claims || !claims.r.includes('admin')) return sendJSON(res, 401, { error: 'unauthorized' });
+
+      if (method === 'GET' && url.pathname === '/api/apikeys') {
+        const list = await readApiKeys();
+        const safe = list.map((k) => ({ id: k.id, label: k.label, createdAt: k.createdAt }));
+        return sendJSON(res, 200, { keys: safe });
+      }
+      if (method === 'POST' && url.pathname === '/api/apikeys') {
+        try {
+          const chunks: Buffer[] = [];
+          await new Promise<void>((resolve, reject) => { req.on('data', (c) => chunks.push(c as Buffer)); req.on('end', resolve); req.on('error', reject); });
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
+          const label = String(body.label || '').trim();
+          // Generate token (base32 Crockford 28 chars)
+          const buf = randomBytes(20);
+          const alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+          let bits = 0, val = 0, out = '';
+          for (let i = 0; i < buf.length; i++) {
+            val = (val << 8) | buf[i];
+            bits += 8;
+            while (bits >= 5) { out += alphabet[(val >>> (bits - 5)) & 31]; bits -= 5; }
+          }
+          if (bits > 0) out += alphabet[(val << (5 - bits)) & 31];
+          const token = out.slice(0, 28);
+          const recs = await readApiKeys();
+          const id = 'k_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+          recs.push({ id, label: label || undefined, hash: sha256Hex(token), createdAt: Date.now() });
+          await writeApiKeys(recs);
+          return sendJSON(res, 200, { id, token }); // Return token once
+        } catch (e: any) {
+          return sendJSON(res, 400, { error: 'create_failed', message: e?.message || String(e) });
+        }
+      }
+      const m = /^\/api\/apikeys\/([^/]+)$/.exec(url.pathname);
+      if (m) {
+        const id = decodeURIComponent(m[1]);
+        if (method === 'DELETE') {
+          const recs = await readApiKeys();
+          const idx = recs.findIndex((k) => k.id === id);
+          if (idx < 0) return sendJSON(res, 404, { error: 'not_found' });
+          recs.splice(idx, 1);
+          await writeApiKeys(recs);
+          return sendJSON(res, 200, { ok: true });
+        }
+      }
+      return sendJSON(res, 405, { error: 'method_not_allowed' });
+    })();
+    return;
   }
 
   // Simple JSON storage for app state (books + loans)
@@ -231,7 +315,8 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const cookies = parseCookies(req);
         const token = cookies['bm2_auth'] || '';
         const claims = token ? await verifyToken(token) : null;
-        if (!claims && !apiKeyValid) return sendJSON(res, 401, { error: 'unauthorized' });
+        const apiValid = await isApiKeyValid(apiKeyFromReq);
+        if (!claims && !apiValid) return sendJSON(res, 401, { error: 'unauthorized' });
         const state = await readState();
         return sendJSON(res, 200, state);
       } catch (e: any) {
@@ -249,7 +334,8 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const cookies = parseCookies(req);
         const token = cookies['bm2_auth'] || '';
         const claims = token ? await verifyToken(token) : null;
-        const ok = apiKeyValid || hasRequiredRole(claims?.r, ['import', 'loans']);
+        const apiValid = await isApiKeyValid(apiKeyFromReq);
+        const ok = apiValid || hasRequiredRole(claims?.r, ['import', 'loans']);
         if (!ok) return sendJSON(res, 401, { error: 'unauthorized' });
         const chunks: Buffer[] = [];
         let size = 0;
@@ -323,7 +409,8 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
       const cookies = parseCookies(req);
       const token = cookies['bm2_auth'] || '';
       const claims = token ? await verifyToken(token) : null;
-      if (!apiKeyValid && (!claims || !claims.r.includes('admin'))) return sendJSON(res, 401, { error: 'unauthorized' });
+      const apiValid = await isApiKeyValid(apiKeyFromReq);
+      if (!apiValid && (!claims || !claims.r.includes('admin'))) return sendJSON(res, 401, { error: 'unauthorized' });
       const users = await readUsers();
       if (method === 'GET' && url.pathname === '/api/users') {
         const safe = users.map((u) => ({ username: u.username, roles: u.roles || [] }));
@@ -380,7 +467,8 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const cookies = parseCookies(req);
         const token = cookies['bm2_auth'] || '';
         const claims = token ? await verifyToken(token) : null;
-        const ok = apiKeyValid || hasRequiredRole(claims?.r, ['import']);
+        const apiValid = await isApiKeyValid(apiKeyFromReq);
+        const ok = apiValid || hasRequiredRole(claims?.r, ['import']);
         if (!ok) return sendJSON(res, 401, { error: 'unauthorized' });
         const chunks: Buffer[] = [];
         await new Promise<void>((resolve, reject) => {
@@ -442,7 +530,8 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const cookies = parseCookies(req);
         const token = cookies['bm2_auth'] || '';
         const claims = token ? await verifyToken(token) : null;
-        if (!claims && !apiKeyValid) return sendJSON(res, 401, { error: 'unauthorized' });
+        const apiValid = await isApiKeyValid(apiKeyFromReq);
+        if (!claims && !apiValid) return sendJSON(res, 401, { error: 'unauthorized' });
         const qp = url.searchParams;
         const rawIsbn = (qp.get('isbn') || '').replace(/[^0-9Xx]/g, '').toUpperCase();
         const barcode = (qp.get('barcode') || '').trim();
@@ -555,7 +644,8 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const cookies = parseCookies(req);
         const token = cookies['bm2_auth'] || '';
         const claims = token ? await verifyToken(token) : null;
-        if (!claims && !apiKeyValid) return sendJSON(res, 401, { error: 'unauthorized' });
+        const apiValid = await isApiKeyValid(apiKeyFromReq);
+        if (!claims && !apiValid) return sendJSON(res, 401, { error: 'unauthorized' });
         const q = (url.searchParams.get('q') || '').trim();
         if (!q) return sendJSON(res, 400, { error: 'missing_q' });
 
@@ -614,7 +704,8 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const cookies = parseCookies(req);
         const token = cookies['bm2_auth'] || '';
         const claims = token ? await verifyToken(token) : null;
-        if (!claims && !apiKeyValid) return sendJSON(res, 401, { error: 'unauthorized' });
+        const apiValid = await isApiKeyValid(apiKeyFromReq);
+        if (!claims && !apiValid) return sendJSON(res, 401, { error: 'unauthorized' });
         const work = (url.searchParams.get('work') || '').trim();
         const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '20', 10) || 20, 1), 50);
         if (!work) return sendJSON(res, 400, { error: 'missing_work' });
