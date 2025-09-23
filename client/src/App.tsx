@@ -2195,7 +2195,7 @@ export function App() {
         <div className="add-form-wrapper" style={{ marginBottom: 12 }}>
           <input
             aria-label="Rechercher un livre (ISBN, code-barres, titre, auteur)"
-            placeholder="Rechercher un livre dans la base ouverte…"
+            placeholder="Rechercher un livre…"
             value={addQuery}
             onFocus={() => setShowAddSuggestions(true)}
             onBlur={() => setTimeout(() => setShowAddSuggestions(false), 100)}
@@ -2208,7 +2208,7 @@ export function App() {
               else if (e.key === 'Enter') { if (addHighlightIndex >= 0) { e.preventDefault(); openEditionPicker(addSuggestions[addHighlightIndex]); } }
               else if (e.key === 'Escape') { setShowAddSuggestions(false); }
             }}
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
+                  style={{ width: '100%', maxWidth: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)', boxSizing: 'border-box' }}
           />
           {showEditionPicker && (
             <div style={{ position: 'absolute', zIndex: 10, top: '100%', left: 0, right: 0, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 10, marginTop: 6, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>
@@ -2790,7 +2790,7 @@ export function App() {
             <label style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>Livre</label>
             <input
               aria-label="Livre (ID court / ISBN / code-barres / titre / auteur)"
-              placeholder="Rechercher par ID, ISBN, code-barres, titre ou auteur…"
+              placeholder="Rechercher livre…"
               value={loanBookQuery}
               onChange={(e) => {
                 setLoanBookQuery(e.target.value);
@@ -2826,7 +2826,7 @@ export function App() {
                   setShowBookSuggestions(false);
                 }
               }}
-              style={{ width: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
+              style={{ width: '100%', maxWidth: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)', boxSizing: 'border-box' }}
             />
             <div className="toolbar" style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
               <button
