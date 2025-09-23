@@ -23,6 +23,12 @@
   --chip-bad-bg: #FDECEA;
   --chip-bad-border: #F5C6C1;
   --chip-bad-text: #8A1F12;
+  /* accent & statuses */
+  --accent: #2563eb;         /* blue-600 */
+  --accent-bg-soft: #e5f3ff; /* very light blue */
+  --accent-weak: #93c5fd;    /* blue-300 (disabled) */
+  --success: #10b981;        /* emerald-500 */
+  --danger: #ef4444;         /* red-500 */
   color-scheme: light;
 }
 
@@ -47,6 +53,12 @@
   --chip-bad-bg: #3a0d0b;
   --chip-bad-border: #7f1d1d;
   --chip-bad-text: #fecaca;
+  /* accent & statuses */
+  --accent: #3b82f6;          /* blue-500 (brighter on dark) */
+  --accent-bg-soft: #0b2444;  /* deep blue tint */
+  --accent-weak: #1e40af;     /* blue-700 (disabled-ish) */
+  --success: #10b981;
+  --danger: #ef4444;
   color-scheme: dark;
 }
 
@@ -62,7 +74,8 @@ html, body, #root { background: var(--bg); color: var(--text); }
 
 /* Navigation: allow items to fill rows evenly */
 .main-nav { row-gap: 8px; --nav-pad-y: 12px; --nav-pad-x: 16px; --nav-font: 16px; --nav-minw: 160px; --nav-radius: 10px; }
-.main-nav a { flex: 1 1 180px; }
+.main-nav a { flex: 1 1 180px; text-decoration: none; }
+.main-nav a:hover, .main-nav a:focus, .main-nav a:active { text-decoration: none; }
 @media (max-width: 640px) {
   .main-nav a { flex-basis: 48%; min-width: 140px; }
 }

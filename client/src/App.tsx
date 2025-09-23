@@ -1546,7 +1546,7 @@ export function App() {
         <input aria-label="Nom d'utilisateur" placeholder="Nom d'utilisateur" value={u} onChange={(e) => setU(e.target.value)} style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }} />
         <input aria-label="Mot de passe" type="password" placeholder="Mot de passe" value={p} onChange={(e) => setP(e.target.value)} style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }} />
         {err && <div style={{ color: '#8A1F12', fontSize: 14 }}>{err}</div>}
-        <button type="submit" disabled={loading || !u || !p} style={{ padding: '10px 12px', borderRadius: 6, width: '100%', border: '1px solid #2563eb', background: loading ? '#93c5fd' : '#3b82f6', color: 'white' }}>{loading ? 'Connexion…' : 'Se connecter'}</button>
+              <button type="submit" disabled={loading || !u || !p} style={{ padding: '10px 12px', borderRadius: 6, width: '100%', border: '1px solid var(--accent)', background: loading ? 'var(--accent-weak)' : 'var(--accent)', color: 'white' }}>{loading ? 'Connexion…' : 'Se connecter'}</button>
       </form>
     );
   }
@@ -1630,7 +1630,7 @@ export function App() {
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={!!newUser.loans} onChange={(e) => setNewUser({ ...newUser, loans: e.target.checked })} /> loans</label>
               </div>
               <div style={{ marginTop: 8 }}>
-                <button type="button" onClick={createUser} disabled={!newUser.username || !newUser.password} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>Créer</button>
+                <button type="button" onClick={createUser} disabled={!newUser.username || !newUser.password} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--accent)', background: 'var(--accent)', color: 'white' }}>Créer</button>
               </div>
             </div>
           </>
@@ -1797,9 +1797,9 @@ export function App() {
               onClick={(e) => { e.preventDefault(); navigate(item.to); setNavOpen(false); }}
               style={{
                 padding: 'var(--nav-pad-y, 12px) var(--nav-pad-x, 16px)',
-                border: '2px solid ' + (route === item.to ? '#2563eb' : 'var(--border)'),
-                background: route === item.to ? 'var(--nav-active-bg)' : 'var(--panel)',
-                color: 'var(--text)',
+                border: '2px solid ' + (route === item.to ? 'var(--accent)' : 'var(--border)'),
+                background: route === item.to ? 'var(--active-bg)' : 'var(--panel)',
+                color: route === item.to ? 'var(--active-text)' : 'var(--text)',
                 borderRadius: 'var(--nav-radius, 10px)',
                 minWidth: 'var(--nav-minw, 160px)',
                 textAlign: 'center',
@@ -1977,7 +1977,7 @@ export function App() {
                 }}>
                   {agentAvailable ? 'Agent détecté' : 'Agent indisponible'}
                 </span>
-                <button type="button" onClick={probeAgent} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--panel)' }}>Rafraîchir</button>
+              <button type="button" onClick={probeAgent} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--panel)' }}>Rafraîchir</button>
               </div>
               <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <select
@@ -2020,16 +2020,16 @@ export function App() {
                   )}
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <input aria-label="Libellé de la clé" placeholder="Libellé (optionnel)" value={apiKeyLabel} onChange={(e) => setApiKeyLabel(e.target.value)} style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 260 }} />
-                    <button type="button" onClick={async () => {
-                      try {
-                        const r = await fetch('/api/apikeys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label: apiKeyLabel || undefined }) });
-                        if (!r.ok) throw new Error('Création échouée');
-                        const d = await r.json();
-                        setNewApiKeyToken(d.token || '')
-                        setApiKeyLabel('');
-                        const rl = await fetch('/api/apikeys'); if (rl.ok) { const dj = await rl.json(); if (Array.isArray(dj.keys)) setApiKeys(dj.keys); }
-                      } catch (e: any) { alert(e?.message || 'Erreur création clé'); }
-                    }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>Créer une clé</button>
+                <button type="button" onClick={async () => {
+                  try {
+                    const r = await fetch('/api/apikeys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label: apiKeyLabel || undefined }) });
+                    if (!r.ok) throw new Error('Création échouée');
+                    const d = await r.json();
+                    setNewApiKeyToken(d.token || '')
+                    setApiKeyLabel('');
+                    const rl = await fetch('/api/apikeys'); if (rl.ok) { const dj = await rl.json(); if (Array.isArray(dj.keys)) setApiKeys(dj.keys); }
+                  } catch (e: any) { alert(e?.message || 'Erreur création clé'); }
+                }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--accent)', background: 'var(--accent)', color: 'white' }}>Créer une clé</button>
                   </div>
                   {newApiKeyToken && (
                     <div style={{
@@ -2230,7 +2230,7 @@ export function App() {
                       <div style={{ color: 'var(--muted-2)', fontSize: 12 }}>{s.isbn13 || s.isbn10 || ''}</div>
                     </div>
                   </div>
-                  <button type="button" onMouseDown={(e) => { e.preventDefault(); openEditionPicker(s); }} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>Choisir édition</button>
+              <button type="button" onMouseDown={(e) => { e.preventDefault(); openEditionPicker(s); }} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--accent)', background: 'var(--accent)', color: 'white' }}>Choisir édition</button>
                 </div>
               </li>
             ))}
@@ -2288,7 +2288,7 @@ export function App() {
               onClick={() => printBatchViaLocalAgent(Array.from(selectedForPrint))}
               disabled={selectedForPrint.size === 0}
               title="Imprimer des étiquettes 44×19 via l'agent USB Zebra"
-              style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #2563eb', background: selectedForPrint.size ? '#3b82f6' : '#93c5fd', color: '#fff' }}
+              style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--accent)', background: selectedForPrint.size ? 'var(--accent)' : 'var(--accent-weak)', color: '#fff' }}
             >
               Imprimer USB Zebra (lot) {selectedForPrint.size > 0 ? `(${selectedForPrint.size})` : ''}
             </button>
@@ -2400,7 +2400,7 @@ export function App() {
                     onClick={() => printViaLocalAgent(b)}
                     title="Imprimer une étiquette 44×19 via l'agent USB Zebra"
                     className="print-action"
-                    style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #2563eb', background: '#3b82f6', color: '#fff' }}
+                    style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--accent)', background: 'var(--accent)', color: '#fff' }}
                   >
                     Imprimer (USB Zebra)
                   </button>
@@ -2464,7 +2464,7 @@ export function App() {
                         <option value={300}>300</option>
                         <option value={600}>600</option>
                       </select>
-                      <button onClick={() => printViaLocalAgent(b)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: '#fff' }}>Imprimer (USB Zebra)</button>
+              <button onClick={() => printViaLocalAgent(b)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--accent)', background: 'var(--accent)', color: '#fff' }}>Imprimer (USB Zebra)</button>
                     </div>
                   </div>
                 );
@@ -2673,7 +2673,7 @@ export function App() {
                   if (loanIsScanning) { await stopLoanCameraScan(); setLoanScanOpen(false); }
                   else { setLoanScanOpen(true); await startLoanCameraScan(); }
                 }}
-                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #2563eb', background: loanIsScanning ? '#ef4444' : '#3b82f6', color: 'white' }}
+                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid ' + (loanIsScanning ? 'var(--danger)' : 'var(--accent)'), background: loanIsScanning ? 'var(--danger)' : 'var(--accent)', color: 'white' }}
               >
                 {loanIsScanning ? 'Arrêter caméra' : 'Scanner (caméra)'}
               </button>
@@ -2887,7 +2887,7 @@ export function App() {
                 <span style={{ color: 'var(--muted-2)' }}> Vous pouvez imprimer leurs étiquettes Zebra.</span>
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <button type="button" onClick={() => printBatchZplNetwork(lastImportedIds)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>Imprimer (réseau)</button>
+              <button type="button" onClick={() => printBatchZplNetwork(lastImportedIds)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--accent)', background: 'var(--accent)', color: 'white' }}>Imprimer (réseau)</button>
                 <button type="button" onClick={() => printBatchViaLocalAgent(lastImportedIds)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Imprimer via agent local</button>
                 <button type="button" onClick={() => setLastImportedIds([])} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Masquer</button>
               </div>
@@ -2898,21 +2898,42 @@ export function App() {
           <button
             type="button"
             onClick={() => setImportMode('lecteur')}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: importMode === 'lecteur' ? '#e5f3ff' : 'var(--panel)' }}
+            style={{
+              padding: '8px 12px',
+              borderRadius: 8,
+              border: '1px solid ' + (importMode === 'lecteur' ? 'var(--active-text)' : 'var(--border)'),
+              background: importMode === 'lecteur' ? 'var(--active-bg)' : 'var(--panel)',
+              color: importMode === 'lecteur' ? 'var(--active-text)' : 'var(--text)',
+              fontWeight: importMode === 'lecteur' ? 700 : 500,
+            }}
           >
             Lecteur externe
           </button>
           <button
             type="button"
             onClick={async () => { setImportMode('camera'); await refreshCameraDevices(); if (!isScanning) await startCameraScan(); }}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: importMode === 'camera' ? '#e5f3ff' : 'var(--panel)' }}
+            style={{
+              padding: '8px 12px',
+              borderRadius: 8,
+              border: '1px solid ' + (importMode === 'camera' ? 'var(--active-text)' : 'var(--border)'),
+              background: importMode === 'camera' ? 'var(--active-bg)' : 'var(--panel)',
+              color: importMode === 'camera' ? 'var(--active-text)' : 'var(--text)',
+              fontWeight: importMode === 'camera' ? 700 : 500,
+            }}
           >
             Caméra (expérimental)
           </button>
           <button
             type="button"
             onClick={() => setImportMode('csv')}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: importMode === 'csv' ? '#e5f3ff' : 'var(--panel)' }}
+            style={{
+              padding: '8px 12px',
+              borderRadius: 8,
+              border: '1px solid ' + (importMode === 'csv' ? 'var(--active-text)' : 'var(--border)'),
+              background: importMode === 'csv' ? 'var(--active-bg)' : 'var(--panel)',
+              color: importMode === 'csv' ? 'var(--active-text)' : 'var(--text)',
+              fontWeight: importMode === 'csv' ? 700 : 500,
+            }}
           >
             CSV (titre,auteur,isbn,epc)
           </button>
@@ -2931,7 +2952,7 @@ export function App() {
               style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
             />
             <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" onClick={addImportFromInput} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>Ajouter</button>
+              <button type="button" onClick={addImportFromInput} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--accent)', background: 'var(--accent)', color: 'white' }}>Ajouter</button>
               <button type="button" onClick={() => setImportInput('')} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Effacer</button>
             </div>
             <small style={{ color: 'var(--muted-2)' }}>Astuce: la plupart des lecteurs USB émulent un clavier et envoient « Entrée » après la saisie.</small>
@@ -2941,10 +2962,10 @@ export function App() {
         {importMode === 'camera' && (
           <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              {!isScanning ? (
-                <button type="button" onClick={startCameraScan} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #2563eb', background: '#3b82f6', color: 'white' }}>Démarrer la caméra</button>
+                {!isScanning ? (
+                <button type="button" onClick={startCameraScan} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--accent)', background: 'var(--accent)', color: 'white' }}>Démarrer la caméra</button>
               ) : (
-                <button type="button" onClick={stopCameraScan} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ef4444', background: '#ef4444', color: 'white' }}>Arrêter</button>
+                <button type="button" onClick={stopCameraScan} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--danger)', background: 'var(--danger)', color: 'white' }}>Arrêter</button>
               )}
               {scanError && <span style={{ color: '#8A1F12' }}>{scanError}</span>}
               <button type="button" onClick={refreshCameraDevices} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>{loadingDevices ? 'Scan…' : 'Rafraîchir les caméras'}</button>
@@ -3007,7 +3028,7 @@ export function App() {
             {csvError && <div style={{ color: '#8A1F12' }}>{csvError}</div>}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <strong>Aperçu: {csvItems.length} ligne(s)</strong>
-              <button type="button" onClick={importCsvItems} disabled={csvItems.every((x) => x.status !== 'ok')} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #10b981', background: csvItems.some((x) => x.status === 'ok') ? '#10b981' : '#9ae6b4', color: 'white' }}>Importer {csvItems.filter((x) => x.status === 'ok').length} livre(s)</button>
+            <button type="button" onClick={importCsvItems} disabled={csvItems.every((x) => x.status !== 'ok')} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--success)', background: csvItems.some((x) => x.status === 'ok') ? 'var(--success)' : '#9ae6b4', color: 'white' }}>Importer {csvItems.filter((x) => x.status === 'ok').length} livre(s)</button>
             </div>
             {csvItems.length > 0 && (
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 6 }}>
@@ -3029,7 +3050,7 @@ export function App() {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <h3 style={{ margin: 0 }}>À importer ({importItems.length})</h3>
-          <button type="button" onClick={importAllToLibrary} disabled={importItems.every((it) => it.status !== 'ok')} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #10b981', background: importItems.some((it) => it.status === 'ok') ? '#10b981' : '#9ae6b4', color: 'white' }}>
+          <button type="button" onClick={importAllToLibrary} disabled={importItems.every((it) => it.status !== 'ok')} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--success)', background: importItems.some((it) => it.status === 'ok') ? 'var(--success)' : '#9ae6b4', color: 'white' }}>
             Importer les livres OK ({importItems.filter((it) => it.status === 'ok').length})
           </button>
         </div>
@@ -3079,7 +3100,7 @@ export function App() {
                             type="button"
                             onClick={() => markImportItemReady(it.barcode)}
                             disabled={!((it.title || '').trim() && (it.author || '').trim())}
-                            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #10b981', background: ((it.title || '').trim() && (it.author || '').trim()) ? '#10b981' : '#9ae6b4', color: 'white' }}
+                            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--success)', background: ((it.title || '').trim() && (it.author || '').trim()) ? 'var(--success)' : '#9ae6b4', color: 'white' }}
                           >
                             Marquer comme prêt
                           </button>
