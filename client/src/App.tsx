@@ -1506,8 +1506,8 @@ export function App() {
                     style={{
                       padding: '8px 10px',
                       borderRadius: 6,
-                      border: '1px solid #10b981',
-                      background: '#10b981',
+                      border: '1px solid var(--success)',
+                      background: 'var(--success)',
                       color: 'white',
                       cursor: 'pointer',
                     }}
@@ -1520,8 +1520,8 @@ export function App() {
                   style={{
                     padding: '8px 10px',
                     borderRadius: 6,
-                    border: '1px solid #ef4444',
-                    background: '#ef4444',
+                    border: '1px solid var(--danger)',
+                    background: 'var(--danger)',
                     color: 'white',
                     cursor: 'pointer',
                   }}
@@ -2184,8 +2184,8 @@ export function App() {
             style={{
               padding: '10px 14px',
               borderRadius: 6,
-              border: '1px solid #0ea5e9',
-              background: '#0ea5e9',
+              border: '1px solid var(--accent)',
+              background: 'var(--accent)',
               color: 'white',
               cursor: 'pointer',
               whiteSpace: 'nowrap',
@@ -2201,8 +2201,8 @@ export function App() {
             style={{
               padding: '10px 14px',
               borderRadius: 6,
-              border: '1px solid #2563eb',
-              background: isAddDisabled ? '#93c5fd' : '#3b82f6',
+              border: '1px solid var(--accent)',
+              background: isAddDisabled ? 'var(--accent-weak)' : 'var(--accent)',
               color: 'white',
               cursor: isAddDisabled ? 'not-allowed' : 'pointer',
             }}
@@ -2414,14 +2414,14 @@ export function App() {
                   {editingBookId === b.id ? (
                     <button
                       onClick={() => setEditingBookId(null)}
-                      style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #6b7280', background: '#6b7280', color: 'white' }}
+                      style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--accent-weak)', background: 'var(--accent-weak)', color: 'white' }}
                     >
                       Terminer
                     </button>
                   ) : (
                     <button
                       onClick={() => setEditingBookId(b.id)}
-                      style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #10b981', background: '#10b981', color: 'white' }}
+                      style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--accent)', background: 'var(--accent)', color: 'white' }}
                     >
                       Éditer
                     </button>
@@ -2432,8 +2432,8 @@ export function App() {
                     style={{
                       padding: '8px 10px',
                       borderRadius: 6,
-                      border: '1px solid #ef4444',
-                      background: '#ef4444',
+                      border: '1px solid var(--danger)',
+                      background: 'var(--danger)',
                       color: 'white',
                       cursor: 'pointer',
                     }}
