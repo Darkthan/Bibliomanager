@@ -16,6 +16,9 @@
   --active-text: #1E3A8A;    /* deep blue */
   --overdue-bg: #FDECEA;     /* soft red */
   --overdue-text: #8A1F12;   /* deep red */
+  /* warnings */
+  --warn-bg: #FEF3C7;       /* amber-100 */
+  --warn-text: #8B5E00;     /* amber-800 */
   /* chips */
   --chip-ok-bg: #E7F7EE;
   --chip-ok-border: #BDEBD3;
@@ -46,6 +49,9 @@
   --active-text: #93c5fd;     /* light blue text */
   --overdue-bg: #3a0d0b;      /* dark red tint */
   --overdue-text: #fecaca;    /* light red text */
+  /* warnings */
+  --warn-bg: #3b2a07;         /* dark amber tint */
+  --warn-text: #fde68a;       /* amber-200 */
   /* keep chips readable on dark */
   --chip-ok-bg: #0b2e1f;
   --chip-ok-border: #14532d;

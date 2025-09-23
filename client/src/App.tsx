@@ -690,7 +690,7 @@ export function App() {
         if (start > lastIndex) parts.push(text.slice(lastIndex, start));
         const matched = text.slice(start, start + m[0].length);
         parts.push(
-          <mark key={start} style={{ background: '#FEF3C7', padding: 0 }}>{matched}</mark>
+          <mark key={start} style={{ background: 'var(--warn-bg)', padding: 0 }}>{matched}</mark>
         );
         lastIndex = start + m[0].length;
       }
@@ -1545,7 +1545,7 @@ export function App() {
       <form onSubmit={async (e) => { e.preventDefault(); setErr(null); setLoading(true); try { await onSubmit(u, p); } catch (e: any) { setErr(e?.message || 'Erreur de connexion'); } finally { setLoading(false); } }} style={{ display: 'grid', gap: 12 }}>
         <input aria-label="Nom d'utilisateur" placeholder="Nom d'utilisateur" value={u} onChange={(e) => setU(e.target.value)} style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }} />
         <input aria-label="Mot de passe" type="password" placeholder="Mot de passe" value={p} onChange={(e) => setP(e.target.value)} style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }} />
-        {err && <div style={{ color: '#8A1F12', fontSize: 14 }}>{err}</div>}
+        {err && <div style={{ color: 'var(--overdue-text)', fontSize: 14 }}>{err}</div>}
               <button type="submit" disabled={loading || !u || !p} style={{ padding: '10px 12px', borderRadius: 6, width: '100%', border: '1px solid var(--accent)', background: loading ? 'var(--accent-weak)' : 'var(--accent)', color: 'white' }}>{loading ? 'Connexion…' : 'Se connecter'}</button>
       </form>
     );
@@ -1588,7 +1588,7 @@ export function App() {
     }
     return (
       <div style={{ display: 'grid', gap: 12 }}>
-        {loading ? <div>Chargement…</div> : error ? <div style={{ color: '#8A1F12' }}>{error}</div> : (
+        {loading ? <div>Chargement…</div> : error ? <div style={{ color: 'var(--overdue-text)' }}>{error}</div> : (
           <>
             <div>
               <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Utilisateurs</div>
@@ -2098,7 +2098,7 @@ export function App() {
                 <button type="button" onMouseDown={(e) => { e.preventDefault(); setShowEditionPicker(false); }} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Fermer</button>
               </div>
               {editionLoading && <div style={{ padding: 8, color: 'var(--muted)' }}>Chargement des éditions…</div>}
-              {editionError && <div style={{ padding: 8, color: '#8A1F12' }}>{editionError}</div>}
+              {editionError && <div style={{ padding: 8, color: 'var(--overdue-text)' }}>{editionError}</div>}
               {!editionLoading && !editionError && editionOptions.length === 0 && (
                 <div style={{ padding: 8, color: 'var(--muted)' }}>Aucune édition trouvée.</div>
               )}
@@ -2237,7 +2237,7 @@ export function App() {
           </ul>
         )}
         {(isbnValidityHint || bookLookupError) && (
-          <p style={{ color: '#8A1F12', fontSize: 13, marginTop: 8 }}>
+          <p style={{ color: 'var(--overdue-text)', fontSize: 13, marginTop: 8 }}>
             {isbnValidityHint || bookLookupError}
           </p>
         )}
@@ -2690,7 +2690,7 @@ export function App() {
                 }}
                 style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 200 }}
               />
-              {loanScanError && <span style={{ color: '#8A1F12' }}>{loanScanError}</span>}
+              {loanScanError && <span style={{ color: 'var(--overdue-text)' }}>{loanScanError}</span>}
             </div>
             {loanScanOpen && (
               <div style={{ marginTop: 8 }}>
@@ -2829,7 +2829,7 @@ export function App() {
           </div>
         )}
         {books.length === 0 && (
-          <p style={{ color: '#8A1F12', fontSize: 13, marginTop: 8 }}>
+          <p style={{ color: 'var(--overdue-text)', fontSize: 13, marginTop: 8 }}>
             Ajoutez d'abord un livre pour pouvoir créer un prêt.
           </p>
         )}
@@ -2967,7 +2967,7 @@ export function App() {
               ) : (
                 <button type="button" onClick={stopCameraScan} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--danger)', background: 'var(--danger)', color: 'white' }}>Arrêter</button>
               )}
-              {scanError && <span style={{ color: '#8A1F12' }}>{scanError}</span>}
+              {scanError && <span style={{ color: 'var(--overdue-text)' }}>{scanError}</span>}
               <button type="button" onClick={refreshCameraDevices} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>{loadingDevices ? 'Scan…' : 'Rafraîchir les caméras'}</button>
             </div>
             {cameraDevices.length > 0 && (
@@ -3025,7 +3025,7 @@ export function App() {
               onChange={(e) => { setCsvText(e.target.value); parseCsv(e.target.value); }}
               style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
             />
-            {csvError && <div style={{ color: '#8A1F12' }}>{csvError}</div>}
+            {csvError && <div style={{ color: 'var(--overdue-text)' }}>{csvError}</div>}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <strong>Aperçu: {csvItems.length} ligne(s)</strong>
             <button type="button" onClick={importCsvItems} disabled={csvItems.every((x) => x.status !== 'ok')} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--success)', background: csvItems.some((x) => x.status === 'ok') ? 'var(--success)' : '#9ae6b4', color: 'white' }}>Importer {csvItems.filter((x) => x.status === 'ok').length} livre(s)</button>
@@ -3116,7 +3116,7 @@ export function App() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifySelf: 'end' }}>
-                  <span style={{ padding: '4px 8px', borderRadius: 999, fontSize: 12, border: '1px solid var(--border)', background: it.status === 'ok' ? 'var(--chip-ok-bg)' : it.status === 'pending' ? 'var(--card-placeholder)' : it.status === 'not_found' ? '#FEF3C7' : 'var(--chip-bad-bg)', color: it.status === 'ok' ? 'var(--chip-ok-text)' : it.status === 'not_found' ? '#8B5E00' : it.status === 'error' ? 'var(--chip-bad-text)' : 'var(--text)' }}>
+                  <span style={{ padding: '4px 8px', borderRadius: 999, fontSize: 12, border: '1px solid var(--border)', background: it.status === 'ok' ? 'var(--chip-ok-bg)' : it.status === 'pending' ? 'var(--card-placeholder)' : it.status === 'not_found' ? 'var(--warn-bg)' : 'var(--chip-bad-bg)', color: it.status === 'ok' ? 'var(--chip-ok-text)' : it.status === 'not_found' ? 'var(--warn-text)' : it.status === 'error' ? 'var(--chip-bad-text)' : 'var(--text)' }}>
                     {it.status === 'ok' ? 'OK' : it.status === 'pending' ? 'En cours' : it.status === 'not_found' ? 'Introuvable' : 'Erreur'}
                   </span>
                   <button type="button" onClick={() => setImportItems((prev) => prev.filter((x) => x.barcode !== it.barcode))} aria-label={`Retirer ${it.barcode}`} style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Retirer</button>
