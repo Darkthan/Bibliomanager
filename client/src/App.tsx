@@ -1786,6 +1786,7 @@ export function App() {
       return;
     }
     let addedIds: number[] = [];
+    let existingMatchIds: number[] = [];
     setBooks((prev) => {
       const existsByIsbn = new Set(prev.map((b) => (b.isbn || '').toUpperCase()).filter(Boolean));
       const existsByBarcode = new Set(prev.map((b) => (b.barcode || '')).filter(Boolean));
@@ -1796,6 +1797,14 @@ export function App() {
         console.log('existsByIsbn:', existsByIsbn, 'existsByBarcode:', existsByBarcode);
         if ((isbnUp && existsByIsbn.has(isbnUp)) || (it.barcode && existsByBarcode.has(it.barcode))) {
           console.log('Skipping duplicate:', it);
+          // Trouver l'ID du livre existant pour le popup
+          const existingBook = prev.find(b => 
+            (isbnUp && (b.isbn || '').toUpperCase() === isbnUp) ||
+            (it.barcode && b.barcode === it.barcode)
+          );
+          if (existingBook) {
+            existingMatchIds.push(existingBook.id);
+          }
           continue;
         }
         const coverUrl = isbnUp ? `/covers/isbn/${isbnUp}?s=M` : undefined;
@@ -1824,16 +1833,21 @@ export function App() {
     setImportItems((prev) => prev.filter((it) => it.status !== 'ok'));
     console.log('After setBooks, addedIds:', addedIds.length, addedIds);
     
-    // FORCE POPUP - pour test
-    const testIds = addedIds.length > 0 ? addedIds : [Date.now()];
-    console.log('FORCE Opening print modal for', testIds.length, 'books:', testIds);
-    setLastImportedIds(testIds);
-    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
-    // Ouvrir le popup d'impression en masse
-    setPrintModalBooks(testIds);
-    setSelectedForBatchPrint(new Set(testIds)); // Tout sélectionné par défaut
-    setShowPrintModal(true);
-    console.log('Print modal should be open now - FORCED');
+    // Ouvrir le popup pour nouveaux livres OU livres existants (doublons)
+    const allRelevantIds = [...addedIds, ...existingMatchIds];
+    console.log('All relevant IDs for popup:', allRelevantIds, 'added:', addedIds, 'existing:', existingMatchIds);
+    
+    if (allRelevantIds.length > 0) {
+      console.log('Opening print modal for', allRelevantIds.length, 'books');
+      setLastImportedIds(addedIds); // Pour le bandeau, utiliser seulement les nouveaux
+      setPrintModalBooks(allRelevantIds); // Pour le popup, utiliser tous
+      setSelectedForBatchPrint(new Set(allRelevantIds));
+      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+      setShowPrintModal(true);
+      console.log('Print modal opened with IDs:', allRelevantIds);
+    } else {
+      console.log('No books found for popup');
+    }
   }
 
   async function printBatchZplNetwork(ids: number[]) {
