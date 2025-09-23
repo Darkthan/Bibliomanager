@@ -1254,33 +1254,76 @@ export function App() {
     zxingReaderRef.current = null;
   }
 
-  // Fonctions spécialisées pour le scan de couverture
-  async function startCoverScan(bookId: number) {
+  // Fonctions pour capture photo de couverture
+  async function startCoverCapture(bookId: number) {
     setScanningCoverForBookId(bookId);
     await refreshCameraDevices();
-    if (!isScanning) {
-      await startCameraScan();
-    }
+    await startCoverCameraStream();
   }
 
-  async function stopCoverScan() {
+  async function stopCoverCapture() {
     setScanningCoverForBookId(null);
-    await stopCameraScan();
+    await stopCoverCameraStream();
   }
 
-  // Effect pour traiter les codes-barres scannés pendant la numérisation de couverture
-  useEffect(() => {
-    if (scanningCoverForBookId && importItems.length > 0) {
-      const latestItem = importItems[importItems.length - 1];
-      if (latestItem.status === 'ok' && latestItem.isbn) {
-        // Mettre à jour le livre avec l'ISBN scanné
-        saveBookEdit(scanningCoverForBookId, { isbn: latestItem.isbn });
-        // Arrêter le scan et nettoyer
-        stopCoverScan();
-        setImportItems([]);
+  // Démarrer le flux caméra pour capture de couverture (sans scan de code-barres)
+  async function startCoverCameraStream() {
+    try {
+      setScanError(null);
+      const constraints: MediaStreamConstraints = {
+        video: selectedCameraId ? { deviceId: { exact: selectedCameraId } } : { facingMode: 'environment' },
+        audio: false,
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => {});
       }
+      setIsScanning(true);
+    } catch (e: any) {
+      setScanError(e?.message || 'Impossible de démarrer la caméra');
     }
-  }, [importItems, scanningCoverForBookId]);
+  }
+
+  // Arrêter le flux caméra
+  async function stopCoverCameraStream() {
+    setIsScanning(false);
+    if (videoRef.current) {
+      try { videoRef.current.pause(); } catch {}
+      videoRef.current.srcObject = null;
+    }
+    if (streamRef.current) {
+      for (const track of streamRef.current.getTracks()) track.stop();
+      streamRef.current = null;
+    }
+  }
+
+  // Capturer une photo de la couverture
+  function captureBookCover() {
+    if (!videoRef.current || !scanningCoverForBookId) return;
+    
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Définir la taille du canvas (ratio couverture de livre ~2:3)
+    canvas.width = 400;
+    canvas.height = 600;
+    
+    // Dessiner la vidéo sur le canvas
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Convertir en base64
+    const imageData = canvas.toDataURL('image/jpeg', 0.8);
+    
+    // Mettre à jour le livre avec l'image capturée
+    saveBookEdit(scanningCoverForBookId, { coverUrl: imageData });
+    
+    // Fermer le modal
+    stopCoverCapture();
+  }
 
   useEffect(() => {
     if (route !== '/import') stopCameraScan();
@@ -2388,7 +2431,7 @@ export function App() {
                   {editingBookId === b.id ? (
                     // En mode édition : couverture cliquable pour scanner
                     <div
-                      onClick={() => startCoverScan(b.id)}
+                      onClick={() => startCoverCapture(b.id)}
                       style={{
                         width: 36,
                         height: 54,
@@ -2401,7 +2444,7 @@ export function App() {
                         justifyContent: 'center',
                         backgroundColor: b.isbn || b.coverUrl ? 'transparent' : 'var(--card-placeholder)',
                       }}
-                      title="Cliquer pour scanner la couverture"
+                      title="Cliquer pour prendre une photo de la couverture"
                     >
                       {b.isbn || b.coverUrl ? (
                         <img src={b.isbn ? `/covers/isbn/${b.isbn}?s=S` : (b.coverUrl as string)} alt="" width={32} height={50} style={{ objectFit: 'cover', borderRadius: 2 }} />
@@ -2696,16 +2739,16 @@ export function App() {
           </div>
         )}
 
-        {/* Modal de scan de couverture */}
+        {/* Modal de capture photo de couverture */}
         {scanningCoverForBookId && (
           <div
             role="dialog"
             aria-modal="true"
-            onClick={() => stopCoverScan()}
+            onClick={() => stopCoverCapture()}
             style={{
               position: 'fixed',
               inset: 0,
-              background: 'rgba(0,0,0,0.8)',
+              background: 'rgba(0,0,0,0.9)',
               display: 'grid',
               placeItems: 'center',
               padding: 16,
@@ -2718,69 +2761,100 @@ export function App() {
                 background: 'var(--panel)', 
                 borderRadius: 12, 
                 padding: 20, 
-                width: 'min(480px, 92vw)', 
+                width: 'min(520px, 95vw)', 
                 boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
                 textAlign: 'center'
               }}
             >
-              <h3 style={{ marginTop: 0, marginBottom: 16 }}>Scanner la couverture du livre</h3>
+              <h3 style={{ marginTop: 0, marginBottom: 16 }}>Photographier la couverture du livre</h3>
               <p style={{ color: 'var(--muted)', marginBottom: 20 }}>
-                Placez le code-barres ISBN de la couverture devant la caméra pour mettre à jour automatiquement la couverture du livre.
+                Positionnez la couverture du livre dans le cadre et cliquez sur "Capturer" pour prendre la photo.
               </p>
               
-              {importMode !== 'camera' && (
-                <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ 
+                  position: 'relative', 
+                  width: '300px', 
+                  height: '450px',
+                  margin: '0 auto',
+                  border: '3px solid var(--accent)',
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  backgroundColor: '#000'
+                }}>
+                  <video
+                    ref={videoRef}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover'
+                    }}
+                    autoPlay
+                    muted
+                    playsInline
+                  />
+                  {/* Overlay pour indiquer la zone de capture */}
+                  <div style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: '80%',
+                    height: '80%',
+                    border: '2px dashed rgba(255,255,255,0.7)',
+                    borderRadius: 4,
+                    pointerEvents: 'none'
+                  }} />
+                </div>
+                {scanError && (
+                  <div style={{ color: 'var(--danger)', marginTop: 12, fontSize: 14 }}>
+                    {scanError}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap', alignItems: 'center' }}>
+                {isScanning && (
                   <button 
                     type="button"
-                    onClick={async () => {
-                      setImportMode('camera');
-                      await refreshCameraDevices();
+                    onClick={captureBookCover}
+                    style={{ 
+                      padding: '12px 24px', 
+                      borderRadius: 8, 
+                      border: '1px solid var(--accent)', 
+                      background: 'var(--accent)', 
+                      color: 'white',
+                      fontSize: 16,
+                      fontWeight: 600,
+                      cursor: 'pointer'
                     }}
+                  >
+                    📷 Capturer
+                  </button>
+                )}
+                
+                {!isScanning && (
+                  <button 
+                    type="button"
+                    onClick={startCoverCameraStream}
                     style={{ 
                       padding: '12px 20px', 
                       borderRadius: 8, 
                       border: '1px solid var(--accent)', 
                       background: 'var(--accent)', 
                       color: 'white',
-                      fontSize: 16,
                       cursor: 'pointer'
                     }}
                   >
-                    Activer la caméra
+                    Démarrer la caméra
                   </button>
-                </div>
-              )}
-
-              {importMode === 'camera' && (
-                <div style={{ marginBottom: 16 }}>
-                  <video
-                    ref={videoRef}
-                    style={{
-                      width: '100%',
-                      maxWidth: 400,
-                      height: 240,
-                      borderRadius: 8,
-                      border: '2px solid var(--accent)',
-                      backgroundColor: '#000'
-                    }}
-                    autoPlay
-                    muted
-                    playsInline
-                  />
-                  {scanError && (
-                    <div style={{ color: 'var(--danger)', marginTop: 8, fontSize: 14 }}>
-                      {scanError}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+                )}
+                
                 <button 
                   type="button" 
-                  onClick={() => stopCoverScan()} 
+                  onClick={() => stopCoverCapture()} 
                   style={{ 
-                    padding: '10px 16px', 
+                    padding: '12px 20px', 
                     borderRadius: 8, 
                     border: '1px solid var(--border)', 
                     background: 'var(--btn-secondary-bg)',
@@ -2789,22 +2863,22 @@ export function App() {
                 >
                   Annuler
                 </button>
-                {cameraDevices.length > 1 && (
+                
+                {cameraDevices.length > 1 && isScanning && (
                   <select
                     value={selectedCameraId}
                     onChange={async (e) => {
                       const id = e.target.value;
                       setSelectedCameraId(id);
-                      if (isScanning) { 
-                        await stopCameraScan(); 
-                        await startCameraScan(); 
-                      }
+                      await stopCoverCameraStream();
+                      await startCoverCameraStream();
                     }}
                     style={{ 
                       padding: '10px 12px', 
                       borderRadius: 8, 
                       border: '1px solid var(--border)',
-                      background: 'var(--panel)'
+                      background: 'var(--panel)',
+                      cursor: 'pointer'
                     }}
                   >
                     {cameraDevices.map((d, i) => (
