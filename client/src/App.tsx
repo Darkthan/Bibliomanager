@@ -660,7 +660,7 @@ export function App() {
     // Get authentication response from browser
     let authResponse: AuthenticationResponseJSON;
     try {
-      authResponse = await startAuthentication(options.options);
+      authResponse = await startAuthentication({ optionsJSON: options.options });
     } catch (error: any) {
       if (error.name === 'NotAllowedError') {
         throw new Error('Authentification annulée');
@@ -705,20 +705,26 @@ export function App() {
     });
 
     if (!beginRes.ok) {
-      throw new Error('Impossible d\'initier l\'enregistrement');
+      const errorData = await beginRes.json().catch(() => null);
+      console.error('Registration begin failed:', beginRes.status, errorData);
+      throw new Error(`Impossible d'initier l'enregistrement: ${errorData?.error || beginRes.status}`);
     }
 
     const options = await beginRes.json();
+    console.log('Registration options received:', options);
 
     // Get registration response from browser
     let regResponse: RegistrationResponseJSON;
     try {
-      regResponse = await startRegistration(options.options);
+      console.log('Starting WebAuthn registration with options:', options.options);
+      regResponse = await startRegistration({ optionsJSON: options.options });
+      console.log('Registration response received:', regResponse);
     } catch (error: any) {
+      console.error('WebAuthn registration error:', error);
       if (error.name === 'NotAllowedError') {
         throw new Error('Enregistrement annulé');
       }
-      throw new Error('Erreur lors de l\'enregistrement');
+      throw new Error(`Erreur lors de l'enregistrement WebAuthn: ${error.message}`);
     }
 
     // Finish registration
@@ -733,8 +739,9 @@ export function App() {
     });
 
     if (!finishRes.ok) {
-      const error = await finishRes.json();
-      throw new Error(error.message || 'Échec de l\'enregistrement');
+      const error = await finishRes.json().catch(() => null);
+      console.error('Registration finish failed:', finishRes.status, error);
+      throw new Error(`Échec de l'enregistrement: ${error?.error || error?.message || finishRes.status}`);
     }
 
     return await finishRes.json();
