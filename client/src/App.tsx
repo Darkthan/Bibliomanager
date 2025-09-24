@@ -11,6 +11,8 @@ type Book = {
   isbn?: string;
   barcode?: string;
   coverUrl?: string;
+  deleted?: boolean;
+  deletedAt?: number;
 };
 
 type Loan = {
@@ -598,7 +600,26 @@ export function App() {
     const book = books.find(b => b.id === id);
     const bookTitle = book ? book.title : 'ce livre';
     
-    if (!confirm(`Êtes-vous sûr de vouloir supprimer "${bookTitle}" ?`)) {
+    if (!confirm(`Êtes-vous sûr de vouloir mettre "${bookTitle}" à la corbeille ?`)) {
+      return;
+    }
+    
+    setBooks((prev) => prev.map((b) => 
+      b.id === id ? { ...b, deleted: true, deletedAt: Date.now() } : b
+    ));
+  }
+
+  function restoreBook(id: number) {
+    setBooks((prev) => prev.map((b) => 
+      b.id === id ? { ...b, deleted: false, deletedAt: undefined } : b
+    ));
+  }
+
+  function permanentDeleteBook(id: number) {
+    const book = books.find(b => b.id === id);
+    const bookTitle = book ? book.title : 'ce livre';
+    
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer définitivement "${bookTitle}" ? Cette action est irréversible.`)) {
       return;
     }
     
@@ -647,8 +668,9 @@ export function App() {
   }
 
   const stats = useMemo(() => {
-    const total = books.length;
-    const read = books.filter((b) => b.read).length;
+    const activeBooks = books.filter((b) => !b.deleted);
+    const total = activeBooks.length;
+    const read = activeBooks.filter((b) => b.read).length;
     return { total, read, unread: total - read };
   }, [books]);
 
@@ -658,7 +680,8 @@ export function App() {
       const matchesQuery = q === '' || b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q);
       const matchesStatus =
         statusFilter === 'all' ? true : statusFilter === 'read' ? b.read : !b.read;
-      return matchesQuery && matchesStatus;
+      const notDeleted = !b.deleted;
+      return matchesQuery && matchesStatus && notDeleted;
     });
     list = list.sort((a, b) => {
       if (sortBy === 'recent' || sortBy === 'addedDesc') return b.createdAt - a.createdAt;
@@ -1982,6 +2005,7 @@ export function App() {
             { to: '/livres/disponibles', label: 'Livres disponibles', show: true },
             { to: '/livres/nouveau', label: 'Gestion des livres', show: canImport },
             { to: '/import', label: 'Import en masse', show: canImport },
+            { to: '/corbeille', label: 'Corbeille', show: canImport },
             { to: '/prets', label: 'Prêts', show: canLoans },
             { to: '/comptes', label: 'Comptes', show: isAdmin },
           ].filter((i) => i.show).map((item) => (
@@ -3383,6 +3407,133 @@ export function App() {
         </>
         )}
       </section>
+      )}
+
+      {route === '/corbeille' && (
+        <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}>
+          <h2 style={{ marginTop: 0 }}>Corbeille</h2>
+          {!canImport ? (
+            <p style={{ color: 'var(--muted)' }}>Accès restreint. Connectez-vous avec un profil Administration ou Import/Ajouts.</p>
+          ) : (() => {
+            const deletedBooks = books.filter(b => b.deleted);
+            
+            if (deletedBooks.length === 0) {
+              return (
+                <p style={{ color: 'var(--muted)', textAlign: 'center', padding: 32 }}>
+                  🗑️ La corbeille est vide
+                </p>
+              );
+            }
+
+            return (
+              <div>
+                <p style={{ marginBottom: 16, color: 'var(--muted)' }}>
+                  {deletedBooks.length} livre(s) dans la corbeille
+                </p>
+                
+                <div style={{ marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <button 
+                    onClick={() => {
+                      if (confirm('Êtes-vous sûr de vouloir vider entièrement la corbeille ? Cette action est irréversible.')) {
+                        setBooks(prev => prev.filter(b => !b.deleted));
+                      }
+                    }}
+                    style={{ 
+                      padding: '8px 12px', 
+                      borderRadius: 6, 
+                      border: '1px solid var(--danger)', 
+                      background: 'var(--danger)', 
+                      color: 'white',
+                      fontWeight: 500
+                    }}
+                  >
+                    Vider la corbeille
+                  </button>
+                  <button 
+                    onClick={() => {
+                      if (confirm('Êtes-vous sûr de vouloir restaurer tous les livres de la corbeille ?')) {
+                        setBooks(prev => prev.map(b => b.deleted ? { ...b, deleted: false, deletedAt: undefined } : b));
+                      }
+                    }}
+                    style={{ 
+                      padding: '8px 12px', 
+                      borderRadius: 6, 
+                      border: '1px solid var(--success)', 
+                      background: 'var(--success)', 
+                      color: 'white',
+                      fontWeight: 500
+                    }}
+                  >
+                    Tout restaurer
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {deletedBooks.map((book) => (
+                    <div key={book.id} style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 12, 
+                      padding: 12, 
+                      border: '1px solid var(--border)', 
+                      borderRadius: 8, 
+                      background: 'var(--card)'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                        {book.coverUrl ? (
+                          <img src={book.coverUrl} alt="" width={40} height={58} style={{ objectFit: 'cover', borderRadius: 4 }} />
+                        ) : (
+                          <div style={{ width: 40, height: 58, background: 'var(--card-placeholder)', borderRadius: 4 }} />
+                        )}
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontWeight: 600, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {book.title}
+                          </div>
+                          <div style={{ color: 'var(--muted)', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {book.author}
+                          </div>
+                          <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>
+                            Supprimé le {new Date(book.deletedAt || 0).toLocaleDateString('fr-FR')}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={() => restoreBook(book.id)}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: 6,
+                            border: '1px solid var(--success)',
+                            background: 'var(--success)',
+                            color: 'white',
+                            fontSize: 14,
+                            fontWeight: 500
+                          }}
+                        >
+                          Restaurer
+                        </button>
+                        <button
+                          onClick={() => permanentDeleteBook(book.id)}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: 6,
+                            border: '1px solid var(--danger)',
+                            background: 'var(--danger)',
+                            color: 'white',
+                            fontSize: 14,
+                            fontWeight: 500
+                          }}
+                        >
+                          Supprimer définitivement
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </section>
       )}
 
       {route === '/comptes' && (
