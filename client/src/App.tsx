@@ -2401,38 +2401,39 @@ export function App() {
           placeItems: 'center', 
           minHeight: '80vh',
           background: 'linear-gradient(135deg, var(--panel) 0%, var(--card) 100%)',
-          padding: '20px',
-          gap: '24px'
+          padding: '20px'
         }}>
-          <h1 style={{ 
-            margin: 0, 
-            fontSize: 32, 
-            fontWeight: 700, 
-            textAlign: 'center',
-            color: 'var(--text)'
-          }}>
-            Connexion
-          </h1>
-          
-          <section style={{ 
-            padding: '32px', 
-            border: '1px solid var(--border)', 
-            borderRadius: 16, 
-            width: 'min(420px, 90vw)', 
-            background: 'var(--panel)', 
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)'
-          }}>
-            {me.username ? (
-              <div style={{ textAlign: 'center' }}>
-                <h2 style={{ margin: '0 0 16px 0', fontSize: 20, fontWeight: 600 }}>Déjà connecté</h2>
-                <p style={{ color: 'var(--muted)', margin: 0 }}>
-                  Connecté en tant que <strong>{me.username}</strong>
-                </p>
-              </div>
-            ) : (
-              <LoginForm onSubmit={async (u, p, remember) => { await login(u, p, remember); navigate('/livres/disponibles'); }} />
-            )}
-          </section>
+          <div style={{ display: 'grid', gap: '12px', alignItems: 'center' }}>
+            <h1 style={{ 
+              margin: 0, 
+              fontSize: 28, 
+              fontWeight: 700, 
+              textAlign: 'center',
+              color: 'var(--text)'
+            }}>
+              Connexion
+            </h1>
+            
+            <section style={{ 
+              padding: '32px', 
+              border: '1px solid var(--border)', 
+              borderRadius: 16, 
+              width: 'min(420px, 90vw)', 
+              background: 'var(--panel)', 
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)'
+            }}>
+              {me.username ? (
+                <div style={{ textAlign: 'center' }}>
+                  <h2 style={{ margin: '0 0 16px 0', fontSize: 20, fontWeight: 600 }}>Déjà connecté</h2>
+                  <p style={{ color: 'var(--muted)', margin: 0 }}>
+                    Connecté en tant que <strong>{me.username}</strong>
+                  </p>
+                </div>
+              ) : (
+                <LoginForm onSubmit={async (u, p, remember) => { await login(u, p, remember); navigate('/livres/disponibles'); }} />
+              )}
+            </section>
+          </div>
         </div>
       )}
 
