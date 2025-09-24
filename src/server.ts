@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
@@ -502,9 +503,11 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
   if (method === 'POST' && url.pathname === '/api/auth/webauthn/register/begin') {
     (async () => {
       try {
+        console.log('WebAuthn register/begin called');
         const chunks: Buffer[] = [];
         await new Promise<void>((resolve, reject) => { req.on('data', (c) => chunks.push(c as Buffer)); req.on('end', resolve); req.on('error', reject); });
         const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
+        console.log('Request body:', body);
         
         const cookies = parseCookies(req);
         const token = cookies['bm2_auth'] || '';
@@ -522,6 +525,8 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const userPasskeys = passkeys.filter(p => p.username === username);
 
         cleanExpiredChallenges();
+
+        console.log('WebAuthn RP Configuration:', { rpID, rpName, rpOrigin });
 
         const options = await generateRegistrationOptions({
           rpName,
