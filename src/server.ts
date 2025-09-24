@@ -545,7 +545,7 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         });
 
         return sendJSON(res, 200, { 
-          ...options,
+          options,
           challengeKey,
           name: passkeyName 
         });
@@ -667,7 +667,7 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         });
 
         return sendJSON(res, 200, { 
-          ...options,
+          options,
           challengeKey 
         });
       } catch (e: any) {

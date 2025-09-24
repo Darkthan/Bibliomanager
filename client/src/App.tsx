@@ -660,9 +660,7 @@ export function App() {
     // Get authentication response from browser
     let authResponse: AuthenticationResponseJSON;
     try {
-      // Extract only WebAuthn options, excluding our custom fields
-      const { challengeKey, ...webauthnOptions } = options;
-      authResponse = await startAuthentication(webauthnOptions);
+      authResponse = await startAuthentication(options.options);
     } catch (error: any) {
       if (error.name === 'NotAllowedError') {
         throw new Error('Authentification annulée');
@@ -715,9 +713,7 @@ export function App() {
     // Get registration response from browser
     let regResponse: RegistrationResponseJSON;
     try {
-      // Extract only WebAuthn options, excluding our custom fields
-      const { challengeKey, name, ...webauthnOptions } = options;
-      regResponse = await startRegistration(webauthnOptions);
+      regResponse = await startRegistration(options.options);
     } catch (error: any) {
       if (error.name === 'NotAllowedError') {
         throw new Error('Enregistrement annulé');
