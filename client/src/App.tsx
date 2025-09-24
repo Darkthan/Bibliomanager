@@ -1688,103 +1688,100 @@ export function App() {
     const [err, setErr] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     return (
-      <div style={{ display: 'grid', gap: 20 }}>
-        <h2 style={{ margin: 0, textAlign: 'center', fontSize: 24, fontWeight: 600 }}>Connexion</h2>
-        <form 
-          onSubmit={async (e) => { 
-            e.preventDefault(); 
-            setErr(null); 
-            setLoading(true); 
-            try { 
-              await onSubmit(u, p); 
-            } catch (e: any) { 
-              setErr(e?.message || 'Erreur de connexion'); 
-            } finally { 
-              setLoading(false); 
-            } 
-          }} 
-          style={{ display: 'grid', gap: 16 }}
-        >
-          <div>
-            <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, color: 'var(--text)' }}>
-              Nom d'utilisateur
-            </label>
-            <input 
-              aria-label="Nom d'utilisateur" 
-              placeholder="Saisissez votre nom d'utilisateur" 
-              value={u} 
-              onChange={(e) => setU(e.target.value)} 
-              style={{ 
-                width: '100%',
-                padding: '12px 16px', 
-                borderRadius: 8, 
-                border: '1px solid var(--border)', 
-                background: 'var(--panel)',
-                fontSize: 16,
-                outline: 'none',
-                transition: 'border-color 0.2s ease'
-              }} 
-              onFocus={(e) => e.target.style.borderColor = 'var(--accent)'}
-              onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, color: 'var(--text)' }}>
-              Mot de passe
-            </label>
-            <input 
-              aria-label="Mot de passe" 
-              type="password" 
-              placeholder="Saisissez votre mot de passe" 
-              value={p} 
-              onChange={(e) => setP(e.target.value)} 
-              style={{ 
-                width: '100%',
-                padding: '12px 16px', 
-                borderRadius: 8, 
-                border: '1px solid var(--border)', 
-                background: 'var(--panel)',
-                fontSize: 16,
-                outline: 'none',
-                transition: 'border-color 0.2s ease'
-              }}
-              onFocus={(e) => e.target.style.borderColor = 'var(--accent)'}
-              onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
-            />
-          </div>
-          {err && (
-            <div style={{ 
-              color: 'var(--danger)', 
-              fontSize: 14, 
-              padding: '8px 12px',
-              background: 'var(--warn-bg)',
-              border: '1px solid var(--danger)',
-              borderRadius: 6,
-              textAlign: 'center'
-            }}>
-              {err}
-            </div>
-          )}
-          <button 
-            type="submit" 
-            disabled={loading || !u || !p} 
+      <form 
+        onSubmit={async (e) => { 
+          e.preventDefault(); 
+          setErr(null); 
+          setLoading(true); 
+          try { 
+            await onSubmit(u, p); 
+          } catch (e: any) { 
+            setErr(e?.message || 'Erreur de connexion'); 
+          } finally { 
+            setLoading(false); 
+          } 
+        }} 
+        style={{ display: 'grid', gap: 20 }}
+      >
+        <div>
+          <label style={{ display: 'block', marginBottom: 8, fontWeight: 500, color: 'var(--text)' }}>
+            Nom d'utilisateur
+          </label>
+          <input 
+            aria-label="Nom d'utilisateur" 
+            value={u} 
+            onChange={(e) => setU(e.target.value)} 
             style={{ 
-              padding: '14px 20px', 
+              width: '100%',
+              padding: '12px 16px', 
               borderRadius: 8, 
-              width: '100%', 
-              border: '1px solid var(--accent)', 
-              background: loading || !u || !p ? 'var(--accent-weak)' : 'var(--accent)', 
-              color: 'white',
+              border: '1px solid var(--border)', 
+              background: 'var(--panel)',
               fontSize: 16,
-              fontWeight: 600,
-              cursor: loading || !u || !p ? 'not-allowed' : 'pointer',
-              transition: 'all 0.2s ease'
+              outline: 'none',
+              transition: 'border-color 0.2s ease',
+              boxSizing: 'border-box'
+            }} 
+            onFocus={(e) => e.target.style.borderColor = 'var(--accent)'}
+            onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+          />
+        </div>
+        <div>
+          <label style={{ display: 'block', marginBottom: 8, fontWeight: 500, color: 'var(--text)' }}>
+            Mot de passe
+          </label>
+          <input 
+            aria-label="Mot de passe" 
+            type="password" 
+            value={p} 
+            onChange={(e) => setP(e.target.value)} 
+            style={{ 
+              width: '100%',
+              padding: '12px 16px', 
+              borderRadius: 8, 
+              border: '1px solid var(--border)', 
+              background: 'var(--panel)',
+              fontSize: 16,
+              outline: 'none',
+              transition: 'border-color 0.2s ease',
+              boxSizing: 'border-box'
             }}
-          >
-            {loading ? 'Connexion en cours…' : 'Se connecter'}
-          </button>
-        </form>
-      </div>
+            onFocus={(e) => e.target.style.borderColor = 'var(--accent)'}
+            onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+          />
+        </div>
+        {err && (
+          <div style={{ 
+            color: 'var(--danger)', 
+            fontSize: 14, 
+            padding: '10px 16px',
+            background: 'var(--warn-bg)',
+            border: '1px solid var(--danger)',
+            borderRadius: 8,
+            textAlign: 'center'
+          }}>
+            {err}
+          </div>
+        )}
+        <button 
+          type="submit" 
+          disabled={loading || !u || !p} 
+          style={{ 
+            padding: '14px 20px', 
+            borderRadius: 8, 
+            width: '100%', 
+            border: '1px solid var(--accent)', 
+            background: loading || !u || !p ? 'var(--accent-weak)' : 'var(--accent)', 
+            color: 'white',
+            fontSize: 16,
+            fontWeight: 600,
+            cursor: loading || !u || !p ? 'not-allowed' : 'pointer',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          {loading ? 'Connexion en cours…' : 'Se connecter'}
+        </button>
+      </form>
     );
   }
 
@@ -2404,21 +2401,30 @@ export function App() {
           placeItems: 'center', 
           minHeight: '80vh',
           background: 'linear-gradient(135deg, var(--panel) 0%, var(--card) 100%)',
-          padding: '20px'
+          padding: '20px',
+          gap: '24px'
         }}>
+          <h1 style={{ 
+            margin: 0, 
+            fontSize: 32, 
+            fontWeight: 700, 
+            textAlign: 'center',
+            color: 'var(--text)'
+          }}>
+            Connexion
+          </h1>
+          
           <section style={{ 
-            padding: '40px 32px', 
+            padding: '32px', 
             border: '1px solid var(--border)', 
             borderRadius: 16, 
             width: 'min(420px, 90vw)', 
             background: 'var(--panel)', 
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
-            display: 'grid', 
-            alignContent: 'center'
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)'
           }}>
             {me.username ? (
               <div style={{ textAlign: 'center' }}>
-                <h2 style={{ margin: '0 0 16px 0', fontSize: 24, fontWeight: 600 }}>Déjà connecté</h2>
+                <h2 style={{ margin: '0 0 16px 0', fontSize: 20, fontWeight: 600 }}>Déjà connecté</h2>
                 <p style={{ color: 'var(--muted)', margin: 0 }}>
                   Connecté en tant que <strong>{me.username}</strong>
                 </p>
