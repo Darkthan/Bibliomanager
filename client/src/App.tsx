@@ -2005,7 +2005,6 @@ export function App() {
             { to: '/livres/disponibles', label: 'Livres disponibles', show: true },
             { to: '/livres/nouveau', label: 'Gestion des livres', show: canImport },
             { to: '/import', label: 'Import en masse', show: canImport },
-            { to: '/corbeille', label: 'Corbeille', show: canImport },
             { to: '/prets', label: 'Prêts', show: canLoans },
             { to: '/comptes', label: 'Comptes', show: isAdmin },
           ].filter((i) => i.show).map((item) => (
@@ -2269,7 +2268,7 @@ export function App() {
               </div>
             )}
 
-            {canImport && (
+            {isAdmin && (
               <div>
                 <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Corbeille</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -3444,8 +3443,8 @@ export function App() {
       {route === '/corbeille' && (
         <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}>
           <h2 style={{ marginTop: 0 }}>Corbeille</h2>
-          {!canImport ? (
-            <p style={{ color: 'var(--muted)' }}>Accès restreint. Connectez-vous avec un profil Administration ou Import/Ajouts.</p>
+          {!isAdmin ? (
+            <p style={{ color: 'var(--muted)' }}>Accès réservé aux administrateurs.</p>
           ) : (() => {
             const deletedBooks = books.filter(b => b.deleted);
             
