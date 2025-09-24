@@ -2268,6 +2268,38 @@ export function App() {
                 </div>
               </div>
             )}
+
+            {canImport && (
+              <div>
+                <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Corbeille</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ color: 'var(--muted)', fontSize: 14 }}>
+                    {(() => {
+                      const deletedCount = books.filter(b => b.deleted).length;
+                      return deletedCount === 0 ? 'Aucun livre dans la corbeille' : `${deletedCount} livre(s) dans la corbeille`;
+                    })()}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/corbeille')}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: 6,
+                      border: '1px solid var(--border)',
+                      background: 'var(--btn-secondary-bg)',
+                      color: 'var(--text)',
+                      fontSize: 14,
+                      fontWeight: 500
+                    }}
+                  >
+                    🗑️ Gérer la corbeille
+                  </button>
+                </div>
+                <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 6 }}>
+                  Les livres supprimés sont conservés dans la corbeille jusqu'à suppression définitive.
+                </div>
+              </div>
+            )}
           </div>
         </section>
       )}
