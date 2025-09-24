@@ -1688,12 +1688,103 @@ export function App() {
     const [err, setErr] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     return (
-      <form onSubmit={async (e) => { e.preventDefault(); setErr(null); setLoading(true); try { await onSubmit(u, p); } catch (e: any) { setErr(e?.message || 'Erreur de connexion'); } finally { setLoading(false); } }} style={{ display: 'grid', gap: 12 }}>
-        <input aria-label="Nom d'utilisateur" placeholder="Nom d'utilisateur" value={u} onChange={(e) => setU(e.target.value)} style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }} />
-        <input aria-label="Mot de passe" type="password" placeholder="Mot de passe" value={p} onChange={(e) => setP(e.target.value)} style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }} />
-        {err && <div style={{ color: 'var(--overdue-text)', fontSize: 14 }}>{err}</div>}
-              <button type="submit" disabled={loading || !u || !p} style={{ padding: '10px 12px', borderRadius: 6, width: '100%', border: '1px solid var(--accent)', background: loading ? 'var(--accent-weak)' : 'var(--accent)', color: 'white' }}>{loading ? 'Connexion…' : 'Se connecter'}</button>
-      </form>
+      <div style={{ display: 'grid', gap: 20 }}>
+        <h2 style={{ margin: 0, textAlign: 'center', fontSize: 24, fontWeight: 600 }}>Connexion</h2>
+        <form 
+          onSubmit={async (e) => { 
+            e.preventDefault(); 
+            setErr(null); 
+            setLoading(true); 
+            try { 
+              await onSubmit(u, p); 
+            } catch (e: any) { 
+              setErr(e?.message || 'Erreur de connexion'); 
+            } finally { 
+              setLoading(false); 
+            } 
+          }} 
+          style={{ display: 'grid', gap: 16 }}
+        >
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, color: 'var(--text)' }}>
+              Nom d'utilisateur
+            </label>
+            <input 
+              aria-label="Nom d'utilisateur" 
+              placeholder="Saisissez votre nom d'utilisateur" 
+              value={u} 
+              onChange={(e) => setU(e.target.value)} 
+              style={{ 
+                width: '100%',
+                padding: '12px 16px', 
+                borderRadius: 8, 
+                border: '1px solid var(--border)', 
+                background: 'var(--panel)',
+                fontSize: 16,
+                outline: 'none',
+                transition: 'border-color 0.2s ease'
+              }} 
+              onFocus={(e) => e.target.style.borderColor = 'var(--accent)'}
+              onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, color: 'var(--text)' }}>
+              Mot de passe
+            </label>
+            <input 
+              aria-label="Mot de passe" 
+              type="password" 
+              placeholder="Saisissez votre mot de passe" 
+              value={p} 
+              onChange={(e) => setP(e.target.value)} 
+              style={{ 
+                width: '100%',
+                padding: '12px 16px', 
+                borderRadius: 8, 
+                border: '1px solid var(--border)', 
+                background: 'var(--panel)',
+                fontSize: 16,
+                outline: 'none',
+                transition: 'border-color 0.2s ease'
+              }}
+              onFocus={(e) => e.target.style.borderColor = 'var(--accent)'}
+              onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+            />
+          </div>
+          {err && (
+            <div style={{ 
+              color: 'var(--danger)', 
+              fontSize: 14, 
+              padding: '8px 12px',
+              background: 'var(--warn-bg)',
+              border: '1px solid var(--danger)',
+              borderRadius: 6,
+              textAlign: 'center'
+            }}>
+              {err}
+            </div>
+          )}
+          <button 
+            type="submit" 
+            disabled={loading || !u || !p} 
+            style={{ 
+              padding: '14px 20px', 
+              borderRadius: 8, 
+              width: '100%', 
+              border: '1px solid var(--accent)', 
+              background: loading || !u || !p ? 'var(--accent-weak)' : 'var(--accent)', 
+              color: 'white',
+              fontSize: 16,
+              fontWeight: 600,
+              cursor: loading || !u || !p ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            {loading ? 'Connexion en cours…' : 'Se connecter'}
+          </button>
+        </form>
+      </div>
     );
   }
 
@@ -2153,65 +2244,69 @@ export function App() {
               </label>
               <div style={{ color: 'var(--muted-2)', fontSize: 13, marginTop: 6 }}>S'applique immédiatement et est enregistré localement.</div>
             </div>
-            <div>
-              <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Imprimante Zebra (réseau)</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
-                <input
-                  aria-label="Adresse IP"
-                  placeholder="Adresse IP (ex: 192.168.1.50)"
-                  value={printerHost}
-                  onChange={(e) => setPrinterHost(e.target.value)}
-                  style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
-                />
-                <input
-                  aria-label="Port"
-                  placeholder="Port"
-                  type="number"
-                  value={printerPort}
-                  onChange={(e) => setPrinterPort(Number(e.target.value) || 9100)}
-                  style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 0 }}
-                />
-                <input
-                  aria-label="DPI"
-                  placeholder="DPI (203/300/600)"
-                  type="number"
-                  value={printerDpi}
-                  onChange={(e) => setPrinterDpi(Number(e.target.value) || 203)}
-                  style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 0 }}
-                />
-              </div>
-              <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 6 }}>Ces paramètres sont enregistrés localement dans le navigateur.</div>
-            </div>
+            {isAdmin && (
+              <>
+                <div>
+                  <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Imprimante Zebra (réseau)</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
+                    <input
+                      aria-label="Adresse IP"
+                      placeholder="Adresse IP (ex: 192.168.1.50)"
+                      value={printerHost}
+                      onChange={(e) => setPrinterHost(e.target.value)}
+                      style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
+                    />
+                    <input
+                      aria-label="Port"
+                      placeholder="Port"
+                      type="number"
+                      value={printerPort}
+                      onChange={(e) => setPrinterPort(Number(e.target.value) || 9100)}
+                      style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 0 }}
+                    />
+                    <input
+                      aria-label="DPI"
+                      placeholder="DPI (203/300/600)"
+                      type="number"
+                      value={printerDpi}
+                      onChange={(e) => setPrinterDpi(Number(e.target.value) || 203)}
+                      style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 0 }}
+                    />
+                  </div>
+                  <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 6 }}>Ces paramètres sont enregistrés localement dans le navigateur.</div>
+                </div>
 
-            <div>
-              <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Agent local (USB Zebra)</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <span style={{
-                  padding: '4px 10px', borderRadius: 999, fontSize: 14,
-                  background: agentAvailable ? 'var(--chip-ok-bg)' : 'var(--chip-bad-bg)',
-                  color: agentAvailable ? 'var(--chip-ok-text)' : 'var(--chip-bad-text)',
-                  border: '1px solid ' + (agentAvailable ? 'var(--chip-ok-border)' : 'var(--chip-bad-border)'),
-                }}>
-                  {agentAvailable ? 'Agent détecté' : 'Agent indisponible'}
-                </span>
-              <button type="button" onClick={probeAgent} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--panel)' }}>Rafraîchir</button>
-              </div>
-              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <select
-                  aria-label="Imprimante locale"
-                  disabled={!agentAvailable}
-                  value={agentPrinterName}
-                  onChange={(e) => setAgentPrinterName(e.target.value)}
-                  style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 240 }}
-                >
-                  <option value="">Imprimante par défaut</option>
-                  {agentPrinters.map((p) => (
-                    <option key={p.name} value={p.name}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 6 }}>L’agent écoute sur http://localhost:9110.</div>
-            </div>
+                <div>
+                  <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Agent local (USB Zebra)</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{
+                      padding: '4px 10px', borderRadius: 999, fontSize: 14,
+                      background: agentAvailable ? 'var(--chip-ok-bg)' : 'var(--chip-bad-bg)',
+                      color: agentAvailable ? 'var(--chip-ok-text)' : 'var(--chip-bad-text)',
+                      border: '1px solid ' + (agentAvailable ? 'var(--chip-ok-border)' : 'var(--chip-bad-border)'),
+                    }}>
+                      {agentAvailable ? 'Agent détecté' : 'Agent indisponible'}
+                    </span>
+                  <button type="button" onClick={probeAgent} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--panel)' }}>Rafraîchir</button>
+                  </div>
+                  <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <select
+                      aria-label="Imprimante locale"
+                      disabled={!agentAvailable}
+                      value={agentPrinterName}
+                      onChange={(e) => setAgentPrinterName(e.target.value)}
+                      style={{ padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)', minWidth: 240 }}
+                    >
+                      <option value="">Imprimante par défaut</option>
+                      {agentPrinters.map((p) => (
+                        <option key={p.name} value={p.name}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 6 }}>L'agent écoute sur http://localhost:9110.</div>
+                </div>
+              </>
+            )}
 
             {isAdmin && (
               <div>
@@ -2304,11 +2399,30 @@ export function App() {
       )}
 
       {route === '/connexion' && (
-        <div style={{ display: 'grid', placeItems: 'center', minHeight: '75vh' }}>
-          <section style={{ padding: 20, border: '1px solid var(--border)', borderRadius: 6, width: 'min(380px, 92vw)', minHeight: 420, background: 'var(--panel)', display: 'grid', alignContent: 'center', gap: 16 }}>
-            <h2 style={{ marginTop: 0, textAlign: 'center' }}>Connexion</h2>
+        <div style={{ 
+          display: 'grid', 
+          placeItems: 'center', 
+          minHeight: '80vh',
+          background: 'linear-gradient(135deg, var(--panel) 0%, var(--card) 100%)',
+          padding: '20px'
+        }}>
+          <section style={{ 
+            padding: '40px 32px', 
+            border: '1px solid var(--border)', 
+            borderRadius: 16, 
+            width: 'min(420px, 90vw)', 
+            background: 'var(--panel)', 
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
+            display: 'grid', 
+            alignContent: 'center'
+          }}>
             {me.username ? (
-              <p style={{ color: 'var(--muted)', textAlign: 'center' }}>Connecté en tant que <strong>{me.username}</strong>.</p>
+              <div style={{ textAlign: 'center' }}>
+                <h2 style={{ margin: '0 0 16px 0', fontSize: 24, fontWeight: 600 }}>Déjà connecté</h2>
+                <p style={{ color: 'var(--muted)', margin: 0 }}>
+                  Connecté en tant que <strong>{me.username}</strong>
+                </p>
+              </div>
             ) : (
               <LoginForm onSubmit={async (u, p, remember) => { await login(u, p, remember); navigate('/livres/disponibles'); }} />
             )}
