@@ -2313,7 +2313,7 @@ export function App() {
                           ) : ed.coverUrl ? (
                             <img src={ed.coverUrl} alt="" width={30} height={44} style={{ objectFit: 'cover', borderRadius: 4 }} />
                           ) : (
-                            <div style={{ width: 30, height={44}, background: 'var(--card-placeholder)', borderRadius: 4 }} />
+                            <div style={{ width: 30, height: 44, background: 'var(--card-placeholder)', borderRadius: 4 }} />
                           )}
                           <div style={{ minWidth: 0 }}>
                             <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ed.title || title}</div>
