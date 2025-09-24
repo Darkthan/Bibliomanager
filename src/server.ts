@@ -5,6 +5,21 @@ import { mkdir, writeFile as fsWriteFile, stat as fsStat } from 'node:fs/promise
 import { readFile } from 'node:fs/promises';
 import { randomBytes, timingSafeEqual, createHmac, scrypt as _scrypt, createHash } from 'node:crypto';
 import net from 'node:net';
+import { 
+  generateRegistrationOptions,
+  verifyRegistrationResponse,
+  generateAuthenticationOptions,
+  verifyAuthenticationResponse,
+} from '@simplewebauthn/server';
+import { isoBase64URL } from '@simplewebauthn/server/helpers';
+import type {
+  GenerateRegistrationOptionsOpts,
+  GenerateAuthenticationOptionsOpts,
+  VerifyRegistrationResponseOpts,
+  VerifyAuthenticationResponseOpts,
+  RegistrationResponseJSON,
+  AuthenticationResponseJSON,
+} from '@simplewebauthn/server';
 
 // Simple in-memory cache + polite rate limiting for Open Library
 const OPENLIB_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -83,9 +98,38 @@ function hasRequiredRole(roles: string[] | undefined | null, required: string[])
 type UserRecord = { username: string; pass: string; roles: string[] };
 type SessionClaims = { u: string; r: string[]; exp: number };
 
+// --- WebAuthn/Passkey types ---
+type PasskeyRecord = {
+  id: string;
+  credentialID: string; // base64url encoded
+  credentialPublicKey: string; // base64url encoded
+  counter: number;
+  credentialDeviceType: 'singleDevice' | 'multiDevice';
+  credentialBackedUp: boolean;
+  transports?: AuthenticatorTransport[];
+  username: string;
+  name: string;
+  createdAt: number;
+};
+
+type ChallengeRecord = {
+  challenge: string;
+  username: string;
+  expiresAt: number;
+};
+
 const dataDir = join(process.cwd(), 'data');
 const usersPath = join(dataDir, 'users.json');
 const secretPath = join(dataDir, 'auth_secret');
+const passkeysPath = join(dataDir, 'passkeys.json');
+
+// WebAuthn configuration
+const rpID = process.env.RP_ID || 'localhost';
+const rpName = 'Bibliomanager';
+const rpOrigin = process.env.RP_ORIGIN || `http://localhost:${process.env.PORT || 3000}`;
+
+// In-memory storage for challenges (in production, use Redis or similar)
+const challenges = new Map<string, ChallengeRecord>();
 
 // --- API keys persisted storage (after dataDir is defined) ---
 type ApiKeyRecord = { id: string; label?: string; hash: string; createdAt: number; lastUsedAt?: number };
@@ -142,6 +186,51 @@ async function readUsers(): Promise<UserRecord[]> {
 async function writeUsers(users: UserRecord[]) {
   await mkdir(dataDir, { recursive: true });
   await fsWriteFile(usersPath, JSON.stringify(users, null, 2));
+}
+
+async function readPasskeys(): Promise<PasskeyRecord[]> {
+  try {
+    const buf = await readFile(passkeysPath);
+    const arr = JSON.parse(buf.toString('utf-8')) as any[];
+    if (Array.isArray(arr)) {
+      return arr.map((p: any) => ({
+        id: String(p.id),
+        credentialID: String(p.credentialID),
+        credentialPublicKey: String(p.credentialPublicKey),
+        counter: Number(p.counter || 0),
+        credentialDeviceType: p.credentialDeviceType || 'singleDevice',
+        credentialBackedUp: Boolean(p.credentialBackedUp),
+        transports: Array.isArray(p.transports) ? p.transports : undefined,
+        username: String(p.username),
+        name: String(p.name || ''),
+        createdAt: Number(p.createdAt || Date.now()),
+      }));
+    }
+  } catch {}
+  return [];
+}
+
+async function writePasskeys(passkeys: PasskeyRecord[]) {
+  await mkdir(dataDir, { recursive: true });
+  await fsWriteFile(passkeysPath, JSON.stringify(passkeys, null, 2));
+}
+
+// Helper functions for base64url encoding/decoding
+function uint8ArrayToBase64url(buffer: Uint8Array | any): string {
+  return isoBase64URL.fromBuffer(new Uint8Array(buffer));
+}
+
+function base64urlToUint8Array(base64url: string): Uint8Array {
+  return isoBase64URL.toBuffer(base64url);
+}
+
+function cleanExpiredChallenges() {
+  const now = Date.now();
+  for (const [key, value] of challenges) {
+    if (value.expiresAt < now) {
+      challenges.delete(key);
+    }
+  }
 }
 
 function parseCookies(req: IncomingMessage): Record<string, string> {
@@ -408,6 +497,251 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
     clearCookie(res, 'bm2_auth');
     return sendJSON(res, 200, { ok: true });
   }
+
+  // WebAuthn/Passkey endpoints
+  if (method === 'POST' && url.pathname === '/api/auth/webauthn/register/begin') {
+    (async () => {
+      try {
+        const chunks: Buffer[] = [];
+        await new Promise<void>((resolve, reject) => { req.on('data', (c) => chunks.push(c as Buffer)); req.on('end', resolve); req.on('error', reject); });
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
+        
+        const cookies = parseCookies(req);
+        const token = cookies['bm2_auth'] || '';
+        const claims = token ? await verifyToken(token) : null;
+        if (!claims) return sendJSON(res, 401, { error: 'unauthorized' });
+
+        const username = claims.u;
+        const passkeyName = String(body.name || '').trim() || 'New Passkey';
+        
+        const users = await readUsers();
+        const user = users.find(u => u.username === username);
+        if (!user) return sendJSON(res, 404, { error: 'user_not_found' });
+
+        const passkeys = await readPasskeys();
+        const userPasskeys = passkeys.filter(p => p.username === username);
+
+        cleanExpiredChallenges();
+
+        const options = await generateRegistrationOptions({
+          rpName,
+          rpID,
+          userID: Buffer.from(username, 'utf-8'),
+          userName: username,
+          userDisplayName: username,
+          attestationType: 'none',
+          excludeCredentials: userPasskeys.map(passkey => ({
+            id: passkey.credentialID,
+            transports: passkey.transports,
+          } as any)),
+          supportedAlgorithmIDs: [-7, -257], // ES256, RS256
+        });
+
+        const challengeKey = `${username}-${Date.now()}`;
+        challenges.set(challengeKey, {
+          challenge: options.challenge,
+          username,
+          expiresAt: Date.now() + 300000, // 5 minutes
+        });
+
+        return sendJSON(res, 200, { 
+          ...options,
+          challengeKey,
+          name: passkeyName 
+        });
+      } catch (e: any) {
+        return sendJSON(res, 500, { error: 'registration_failed', message: e?.message || String(e) });
+      }
+    })();
+    return;
+  }
+
+  if (method === 'POST' && url.pathname === '/api/auth/webauthn/register/finish') {
+    (async () => {
+      try {
+        const chunks: Buffer[] = [];
+        await new Promise<void>((resolve, reject) => { req.on('data', (c) => chunks.push(c as Buffer)); req.on('end', resolve); req.on('error', reject); });
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
+        
+        const cookies = parseCookies(req);
+        const token = cookies['bm2_auth'] || '';
+        const claims = token ? await verifyToken(token) : null;
+        if (!claims) return sendJSON(res, 401, { error: 'unauthorized' });
+
+        const { challengeKey, name, response } = body;
+        if (!challengeKey || !response) return sendJSON(res, 400, { error: 'missing_data' });
+
+        const challengeRecord = challenges.get(challengeKey);
+        if (!challengeRecord || challengeRecord.expiresAt < Date.now()) {
+          challenges.delete(challengeKey);
+          return sendJSON(res, 400, { error: 'invalid_challenge' });
+        }
+
+        if (challengeRecord.username !== claims.u) {
+          return sendJSON(res, 403, { error: 'unauthorized' });
+        }
+
+        const verification = await verifyRegistrationResponse({
+          response: response as RegistrationResponseJSON,
+          expectedChallenge: challengeRecord.challenge,
+          expectedOrigin: rpOrigin,
+          expectedRPID: rpID,
+        });
+
+        if (!verification.verified || !verification.registrationInfo) {
+          return sendJSON(res, 400, { error: 'verification_failed' });
+        }
+
+        const { registrationInfo } = verification;
+        const passkeys = await readPasskeys();
+
+        const newPasskey: PasskeyRecord = {
+          id: randomBytes(16).toString('hex'),
+          credentialID: uint8ArrayToBase64url((registrationInfo as any).credentialID || (registrationInfo as any).credential.id),
+          credentialPublicKey: uint8ArrayToBase64url((registrationInfo as any).credentialPublicKey || (registrationInfo as any).credential.publicKey),
+          counter: (registrationInfo as any).counter || (registrationInfo as any).credential.counter || 0,
+          credentialDeviceType: registrationInfo.credentialDeviceType,
+          credentialBackedUp: registrationInfo.credentialBackedUp,
+          transports: response.response?.transports,
+          username: claims.u,
+          name: String(name || 'New Passkey'),
+          createdAt: Date.now(),
+        };
+
+        passkeys.push(newPasskey);
+        await writePasskeys(passkeys);
+
+        challenges.delete(challengeKey);
+
+        return sendJSON(res, 200, { 
+          ok: true, 
+          passkey: {
+            id: newPasskey.id,
+            name: newPasskey.name,
+            createdAt: newPasskey.createdAt
+          }
+        });
+      } catch (e: any) {
+        return sendJSON(res, 500, { error: 'registration_failed', message: e?.message || String(e) });
+      }
+    })();
+    return;
+  }
+
+  if (method === 'POST' && url.pathname === '/api/auth/webauthn/authenticate/begin') {
+    (async () => {
+      try {
+        const chunks: Buffer[] = [];
+        await new Promise<void>((resolve, reject) => { req.on('data', (c) => chunks.push(c as Buffer)); req.on('end', resolve); req.on('error', reject); });
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
+        
+        const username = String(body.username || '').trim();
+        if (!username) return sendJSON(res, 400, { error: 'missing_username' });
+
+        const users = await readUsers();
+        const user = users.find(u => u.username === username);
+        if (!user) return sendJSON(res, 404, { error: 'user_not_found' });
+
+        const passkeys = await readPasskeys();
+        const userPasskeys = passkeys.filter(p => p.username === username);
+        
+        if (userPasskeys.length === 0) {
+          return sendJSON(res, 400, { error: 'no_passkeys' });
+        }
+
+        cleanExpiredChallenges();
+
+        const options = await generateAuthenticationOptions({
+          rpID,
+          allowCredentials: userPasskeys.map(passkey => ({
+            id: passkey.credentialID,
+            transports: passkey.transports,
+          } as any)),
+        });
+
+        const challengeKey = `auth-${username}-${Date.now()}`;
+        challenges.set(challengeKey, {
+          challenge: options.challenge,
+          username,
+          expiresAt: Date.now() + 300000, // 5 minutes
+        });
+
+        return sendJSON(res, 200, { 
+          ...options,
+          challengeKey 
+        });
+      } catch (e: any) {
+        return sendJSON(res, 500, { error: 'auth_failed', message: e?.message || String(e) });
+      }
+    })();
+    return;
+  }
+
+  if (method === 'POST' && url.pathname === '/api/auth/webauthn/authenticate/finish') {
+    (async () => {
+      try {
+        const chunks: Buffer[] = [];
+        await new Promise<void>((resolve, reject) => { req.on('data', (c) => chunks.push(c as Buffer)); req.on('end', resolve); req.on('error', reject); });
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
+        
+        const { challengeKey, response } = body;
+        if (!challengeKey || !response) return sendJSON(res, 400, { error: 'missing_data' });
+
+        const challengeRecord = challenges.get(challengeKey);
+        if (!challengeRecord || challengeRecord.expiresAt < Date.now()) {
+          challenges.delete(challengeKey);
+          return sendJSON(res, 400, { error: 'invalid_challenge' });
+        }
+
+        const passkeys = await readPasskeys();
+        const userPasskeys = passkeys.filter(p => p.username === challengeRecord.username);
+        
+        const credentialID = response.id; // The response.id should already be base64url encoded
+        const passkey = userPasskeys.find(p => p.credentialID === credentialID);
+        
+        if (!passkey) {
+          return sendJSON(res, 400, { error: 'credential_not_found' });
+        }
+
+        const verification = await verifyAuthenticationResponse({
+          response: response as AuthenticationResponseJSON,
+          expectedChallenge: challengeRecord.challenge,
+          expectedOrigin: rpOrigin,
+          expectedRPID: rpID,
+          credential: {
+            id: passkey.credentialID,
+            publicKey: passkey.credentialPublicKey,
+            counter: passkey.counter,
+            transports: passkey.transports,
+          } as any,
+        });
+
+        if (!verification.verified) {
+          return sendJSON(res, 400, { error: 'verification_failed' });
+        }
+
+        // Update counter
+        passkey.counter = verification.authenticationInfo.newCounter;
+        await writePasskeys(passkeys);
+
+        // Create session
+        const users = await readUsers();
+        const user = users.find(u => u.username === challengeRecord.username);
+        if (!user) return sendJSON(res, 404, { error: 'user_not_found' });
+
+        const exp = Date.now() + (30 * 24 * 60 * 60 * 1000); // 30 days
+        const token = await signToken({ u: user.username, r: user.roles, exp });
+        setCookie(res, 'bm2_auth', token, { httpOnly: true, sameSite: 'Lax', maxAge: 30 * 24 * 60 * 60 });
+
+        challenges.delete(challengeKey);
+
+        return sendJSON(res, 200, { ok: true });
+      } catch (e: any) {
+        return sendJSON(res, 500, { error: 'auth_failed', message: e?.message || String(e) });
+      }
+    })();
+    return;
+  }
   // Users management (admin only)
   if (url.pathname.startsWith('/api/users')) {
     (async () => {
@@ -459,6 +793,117 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
           return sendJSON(res, 200, { ok: true });
         }
       }
+      return sendJSON(res, 405, { error: 'method_not_allowed' });
+    })();
+    return;
+  }
+
+  // Passkey management endpoints
+  if (url.pathname.startsWith('/api/passkeys')) {
+    (async () => {
+      const cookies = parseCookies(req);
+      const token = cookies['bm2_auth'] || '';
+      const claims = token ? await verifyToken(token) : null;
+      if (!claims) return sendJSON(res, 401, { error: 'unauthorized' });
+
+      // List user's passkeys: GET /api/passkeys
+      if (method === 'GET' && url.pathname === '/api/passkeys') {
+        const passkeys = await readPasskeys();
+        const userPasskeys = passkeys
+          .filter(p => p.username === claims.u)
+          .map(p => ({
+            id: p.id,
+            name: p.name,
+            createdAt: p.createdAt,
+            credentialDeviceType: p.credentialDeviceType,
+            credentialBackedUp: p.credentialBackedUp,
+          }));
+        return sendJSON(res, 200, { passkeys: userPasskeys });
+      }
+
+      // Delete user's passkey: DELETE /api/passkeys/:id
+      const deleteMatch = /^\/api\/passkeys\/([^/]+)$/.exec(url.pathname);
+      if (method === 'DELETE' && deleteMatch) {
+        const passkeyId = decodeURIComponent(deleteMatch[1]);
+        const passkeys = await readPasskeys();
+        const idx = passkeys.findIndex(p => p.id === passkeyId && p.username === claims.u);
+        if (idx < 0) return sendJSON(res, 404, { error: 'not_found' });
+        
+        passkeys.splice(idx, 1);
+        await writePasskeys(passkeys);
+        return sendJSON(res, 200, { ok: true });
+      }
+
+      // Rename user's passkey: PUT /api/passkeys/:id
+      const renameMatch = /^\/api\/passkeys\/([^/]+)$/.exec(url.pathname);
+      if (method === 'PUT' && renameMatch) {
+        const passkeyId = decodeURIComponent(renameMatch[1]);
+        const chunks: Buffer[] = [];
+        await new Promise<void>((resolve, reject) => { req.on('data', (c) => chunks.push(c as Buffer)); req.on('end', resolve); req.on('error', reject); });
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
+        
+        const newName = String(body.name || '').trim();
+        if (!newName) return sendJSON(res, 400, { error: 'missing_name' });
+        
+        const passkeys = await readPasskeys();
+        const idx = passkeys.findIndex(p => p.id === passkeyId && p.username === claims.u);
+        if (idx < 0) return sendJSON(res, 404, { error: 'not_found' });
+        
+        passkeys[idx].name = newName;
+        await writePasskeys(passkeys);
+        return sendJSON(res, 200, { ok: true });
+      }
+
+      return sendJSON(res, 405, { error: 'method_not_allowed' });
+    })();
+    return;
+  }
+
+  // Admin passkey management endpoints
+  if (url.pathname.startsWith('/api/admin/passkeys')) {
+    (async () => {
+      const cookies = parseCookies(req);
+      const token = cookies['bm2_auth'] || '';
+      const claims = token ? await verifyToken(token) : null;
+      if (!claims || !claims.r.includes('admin')) return sendJSON(res, 401, { error: 'unauthorized' });
+
+      // List all passkeys: GET /api/admin/passkeys
+      if (method === 'GET' && url.pathname === '/api/admin/passkeys') {
+        const passkeys = await readPasskeys();
+        const allPasskeys = passkeys.map(p => ({
+          id: p.id,
+          username: p.username,
+          name: p.name,
+          createdAt: p.createdAt,
+          credentialDeviceType: p.credentialDeviceType,
+          credentialBackedUp: p.credentialBackedUp,
+        }));
+        return sendJSON(res, 200, { passkeys: allPasskeys });
+      }
+
+      // Delete any passkey: DELETE /api/admin/passkeys/:id
+      const deleteMatch = /^\/api\/admin\/passkeys\/([^/]+)$/.exec(url.pathname);
+      if (method === 'DELETE' && deleteMatch) {
+        const passkeyId = decodeURIComponent(deleteMatch[1]);
+        const passkeys = await readPasskeys();
+        const idx = passkeys.findIndex(p => p.id === passkeyId);
+        if (idx < 0) return sendJSON(res, 404, { error: 'not_found' });
+        
+        passkeys.splice(idx, 1);
+        await writePasskeys(passkeys);
+        return sendJSON(res, 200, { ok: true });
+      }
+
+      // Delete all passkeys for a user: DELETE /api/admin/passkeys/user/:username
+      const deleteUserMatch = /^\/api\/admin\/passkeys\/user\/([^/]+)$/.exec(url.pathname);
+      if (method === 'DELETE' && deleteUserMatch) {
+        const username = decodeURIComponent(deleteUserMatch[1]);
+        const passkeys = await readPasskeys();
+        const filtered = passkeys.filter(p => p.username !== username);
+        await writePasskeys(filtered);
+        return sendJSON(res, 200, { ok: true, deleted: passkeys.length - filtered.length });
+      }
+
       return sendJSON(res, 405, { error: 'method_not_allowed' });
     })();
     return;

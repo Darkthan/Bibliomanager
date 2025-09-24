@@ -1,5 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import './responsive.css';
+import { 
+  startRegistration, 
+  startAuthentication,
+  browserSupportsWebAuthn,
+} from '@simplewebauthn/browser';
+import type {
+  RegistrationResponseJSON,
+  AuthenticationResponseJSON,
+} from '@simplewebauthn/browser';
 
 type Book = {
   id: number;
@@ -623,6 +632,112 @@ export function App() {
     try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
     setMe({ username: null, roles: ['guest'] });
     if (route !== '/livres/disponibles') navigate('/livres/disponibles');
+  }
+
+  // WebAuthn/Passkey functions
+  async function loginWithPasskey(username: string) {
+    if (!browserSupportsWebAuthn()) {
+      throw new Error('WebAuthn non supporté par ce navigateur');
+    }
+
+    // Begin authentication
+    const beginRes = await fetch('/api/auth/webauthn/authenticate/begin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username }),
+    });
+    
+    if (!beginRes.ok) {
+      const error = await beginRes.json();
+      if (error.error === 'no_passkeys') {
+        throw new Error('Aucune clé d\'accès trouvée pour cet utilisateur');
+      }
+      throw new Error('Impossible d\'initier l\'authentification');
+    }
+
+    const options = await beginRes.json();
+
+    // Get authentication response from browser
+    let authResponse: AuthenticationResponseJSON;
+    try {
+      authResponse = await startAuthentication(options);
+    } catch (error: any) {
+      if (error.name === 'NotAllowedError') {
+        throw new Error('Authentification annulée');
+      }
+      throw new Error('Erreur lors de l\'authentification');
+    }
+
+    // Finish authentication
+    const finishRes = await fetch('/api/auth/webauthn/authenticate/finish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        challengeKey: options.challengeKey,
+        response: authResponse,
+      }),
+    });
+
+    if (!finishRes.ok) {
+      throw new Error('Échec de l\'authentification');
+    }
+
+    // Update user state
+    const meRes = await fetch('/api/auth/me', { cache: 'no-store' });
+    const d = await meRes.json();
+    setMe({ username: d?.user?.username || null, roles: Array.isArray(d.roles) ? d.roles : ['guest'] });
+  }
+
+  async function registerPasskey(name: string) {
+    if (!browserSupportsWebAuthn()) {
+      throw new Error('WebAuthn non supporté par ce navigateur');
+    }
+
+    if (!me.username) {
+      throw new Error('Vous devez être connecté pour ajouter une clé d\'accès');
+    }
+
+    // Begin registration
+    const beginRes = await fetch('/api/auth/webauthn/register/begin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+
+    if (!beginRes.ok) {
+      throw new Error('Impossible d\'initier l\'enregistrement');
+    }
+
+    const options = await beginRes.json();
+
+    // Get registration response from browser
+    let regResponse: RegistrationResponseJSON;
+    try {
+      regResponse = await startRegistration(options);
+    } catch (error: any) {
+      if (error.name === 'NotAllowedError') {
+        throw new Error('Enregistrement annulé');
+      }
+      throw new Error('Erreur lors de l\'enregistrement');
+    }
+
+    // Finish registration
+    const finishRes = await fetch('/api/auth/webauthn/register/finish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        challengeKey: options.challengeKey,
+        name: options.name,
+        response: regResponse,
+      }),
+    });
+
+    if (!finishRes.ok) {
+      const error = await finishRes.json();
+      throw new Error(error.message || 'Échec de l\'enregistrement');
+    }
+
+    return await finishRes.json();
   }
   const isAddDisabled = useMemo(() => title.trim().length === 0 || author.trim().length === 0, [title, author]);
 
@@ -1891,11 +2006,271 @@ export function App() {
     );
   }
 
+  function PasskeyManagement() {
+    const [passkeys, setPasskeys] = useState<Array<{ id: string; name: string; createdAt: number; credentialDeviceType: string; credentialBackedUp: boolean }>>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [newPasskeyName, setNewPasskeyName] = useState('');
+    const [registering, setRegistering] = useState(false);
+    const supportsWebAuthn = browserSupportsWebAuthn();
+
+    const loadPasskeys = async () => {
+      if (!me.username) return;
+      try {
+        setLoading(true);
+        const res = await fetch('/api/passkeys');
+        if (res.ok) {
+          const data = await res.json();
+          setPasskeys(data.passkeys || []);
+        } else {
+          setError('Impossible de charger les clés d\'accès');
+        }
+      } catch (e: any) {
+        setError('Erreur lors du chargement');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    useEffect(() => {
+      if (me.username) {
+        loadPasskeys();
+      }
+    }, [me.username]);
+
+    const handleRegisterPasskey = async () => {
+      const name = newPasskeyName.trim() || 'Nouvelle clé d\'accès';
+      setRegistering(true);
+      setError(null);
+      
+      try {
+        await registerPasskey(name);
+        setNewPasskeyName('');
+        await loadPasskeys();
+      } catch (e: any) {
+        setError(e?.message || 'Erreur lors de l\'enregistrement');
+      } finally {
+        setRegistering(false);
+      }
+    };
+
+    const handleDeletePasskey = async (id: string, name: string) => {
+      if (!confirm(`Supprimer la clé d'accès "${name}" ?`)) return;
+      
+      try {
+        const res = await fetch(`/api/passkeys/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (res.ok) {
+          setPasskeys(prev => prev.filter(p => p.id !== id));
+        } else {
+          setError('Erreur lors de la suppression');
+        }
+      } catch (e: any) {
+        setError('Erreur lors de la suppression');
+      }
+    };
+
+    const handleRenamePasskey = async (id: string, oldName: string) => {
+      const newName = prompt('Nouveau nom pour cette clé d\'accès:', oldName);
+      if (!newName || newName.trim() === oldName) return;
+      
+      try {
+        const res = await fetch(`/api/passkeys/${encodeURIComponent(id)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newName.trim() }),
+        });
+        
+        if (res.ok) {
+          setPasskeys(prev => prev.map(p => p.id === id ? { ...p, name: newName.trim() } : p));
+        } else {
+          setError('Erreur lors du renommage');
+        }
+      } catch (e: any) {
+        setError('Erreur lors du renommage');
+      }
+    };
+
+    if (!me.username) return null;
+
+    return (
+      <div>
+        <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>
+          Clés d'accès (Passkeys) 🔐
+        </div>
+        
+        {!supportsWebAuthn && (
+          <div style={{
+            padding: '12px 16px',
+            background: 'var(--warn-bg)',
+            border: '1px solid var(--warn-text)',
+            borderRadius: 8,
+            color: 'var(--warn-text)',
+            marginBottom: 16
+          }}>
+            ⚠️ WebAuthn n'est pas supporté par ce navigateur
+          </div>
+        )}
+
+        {error && (
+          <div style={{
+            padding: '12px 16px',
+            background: 'var(--warn-bg)',
+            border: '1px solid var(--danger)',
+            borderRadius: 8,
+            color: 'var(--danger)',
+            marginBottom: 16
+          }}>
+            {error}
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gap: 16 }}>
+          {supportsWebAuthn && (
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 14 }}>
+                Ajouter une nouvelle clé d'accès
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input
+                  placeholder="Nom de la clé (ex: iPhone, Yubikey...)"
+                  value={newPasskeyName}
+                  onChange={(e) => setNewPasskeyName(e.target.value)}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 6,
+                    border: '1px solid var(--border)',
+                    minWidth: 300
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={registering}
+                  onClick={handleRegisterPasskey}
+                  style={{
+                    padding: '10px 16px',
+                    borderRadius: 6,
+                    border: '1px solid var(--success)',
+                    background: registering ? 'var(--muted-2)' : 'var(--success)',
+                    color: 'white',
+                    fontWeight: 500,
+                    cursor: registering ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {registering ? 'Enregistrement...' : '+ Ajouter'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 14 }}>
+              Mes clés d'accès ({passkeys.length})
+            </div>
+            
+            {loading ? (
+              <div style={{ color: 'var(--muted)', padding: 16, textAlign: 'center' }}>
+                Chargement...
+              </div>
+            ) : passkeys.length === 0 ? (
+              <div style={{ color: 'var(--muted)', padding: 16, textAlign: 'center' }}>
+                Aucune clé d'accès configurée
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: 8 }}>
+                {passkeys.map((passkey) => (
+                  <div
+                    key={passkey.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      padding: '12px 16px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 8,
+                      background: 'var(--card)'
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, marginBottom: 2 }}>
+                        {passkey.name}
+                      </div>
+                      <div style={{ color: 'var(--muted-2)', fontSize: 12 }}>
+                        Créée le {new Date(passkey.createdAt).toLocaleString()} •{' '}
+                        {passkey.credentialDeviceType === 'multiDevice' ? 'Multi-appareils' : 'Appareil unique'} •{' '}
+                        {passkey.credentialBackedUp ? 'Sauvegardée' : 'Non sauvegardée'}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => handleRenamePasskey(passkey.id, passkey.name)}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: 6,
+                          border: '1px solid var(--border)',
+                          background: 'var(--btn-secondary-bg)',
+                          fontSize: 12
+                        }}
+                      >
+                        ✏️ Renommer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePasskey(passkey.id, passkey.name)}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: 6,
+                          border: '1px solid var(--danger)',
+                          background: 'var(--danger)',
+                          color: 'white',
+                          fontSize: 12
+                        }}
+                      >
+                        🗑️ Supprimer
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        
+        <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 12 }}>
+          Les clés d'accès permettent une authentification sécurisée sans mot de passe en utilisant 
+          votre empreinte digitale, Face ID, ou une clé de sécurité physique.
+        </div>
+      </div>
+    );
+  }
+
   function LoginForm({ onSubmit }: { onSubmit: (u: string, p: string) => Promise<void> }) {
     const [u, setU] = useState('');
     const [p, setP] = useState('');
     const [err, setErr] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [passkeyLoading, setPasskeyLoading] = useState(false);
+    const supportsWebAuthn = browserSupportsWebAuthn();
+
+    const handlePasskeyLogin = async () => {
+      if (!u.trim()) {
+        setErr('Veuillez saisir un nom d\'utilisateur');
+        return;
+      }
+      
+      setErr(null);
+      setPasskeyLoading(true);
+      try {
+        await loginWithPasskey(u.trim());
+        navigate('/livres/disponibles');
+      } catch (e: any) {
+        setErr(e?.message || 'Erreur d\'authentification avec la clé d\'accès');
+      } finally {
+        setPasskeyLoading(false);
+      }
+    };
+
     return (
       <form 
         onSubmit={async (e) => { 
@@ -1972,6 +2347,56 @@ export function App() {
             {err}
           </div>
         )}
+        {supportsWebAuthn && (
+          <button 
+            type="button" 
+            disabled={passkeyLoading || loading || !u} 
+            onClick={handlePasskeyLogin}
+            style={{ 
+              padding: '14px 20px', 
+              borderRadius: 8, 
+              width: '100%', 
+              border: '1px solid var(--success)', 
+              background: passkeyLoading || loading || !u ? 'var(--muted-2)' : 'var(--success)', 
+              color: 'white',
+              fontSize: 16,
+              fontWeight: 600,
+              cursor: passkeyLoading || loading || !u ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
+            }}
+          >
+            <span style={{ fontSize: '18px' }}>🔐</span>
+            {passkeyLoading ? 'Authentification...' : 'Se connecter avec une clé d\'accès'}
+          </button>
+        )}
+        <div style={{ 
+          textAlign: 'center', 
+          color: 'var(--muted)', 
+          fontSize: 14,
+          position: 'relative',
+          margin: '10px 0'
+        }}>
+          <div style={{ 
+            position: 'absolute', 
+            top: '50%', 
+            left: 0, 
+            right: 0, 
+            height: '1px', 
+            background: 'var(--border)' 
+          }} />
+          <span style={{ 
+            background: 'var(--panel)', 
+            padding: '0 15px',
+            position: 'relative',
+            zIndex: 1
+          }}>
+            ou
+          </span>
+        </div>
         <button 
           type="submit" 
           disabled={loading || !u || !p} 
@@ -1988,9 +2413,202 @@ export function App() {
             transition: 'all 0.2s ease'
           }}
         >
-          {loading ? 'Connexion en cours…' : 'Se connecter'}
+          {loading ? 'Connexion en cours…' : 'Se connecter avec mot de passe'}
         </button>
       </form>
+    );
+  }
+
+  function AdminPasskeyManagement() {
+    const [allPasskeys, setAllPasskeys] = useState<Array<{ id: string; username: string; name: string; createdAt: number; credentialDeviceType: string; credentialBackedUp: boolean }>>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    const loadAllPasskeys = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch('/api/admin/passkeys');
+        if (res.ok) {
+          const data = await res.json();
+          setAllPasskeys(data.passkeys || []);
+        } else {
+          setError('Impossible de charger les clés d\'accès');
+        }
+      } catch (e: any) {
+        setError('Erreur lors du chargement');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    useEffect(() => {
+      loadAllPasskeys();
+    }, []);
+
+    const handleDeletePasskey = async (id: string, username: string, name: string) => {
+      if (!confirm(`Supprimer la clé d'accès "${name}" de l'utilisateur ${username} ?`)) return;
+      
+      try {
+        const res = await fetch(`/api/admin/passkeys/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (res.ok) {
+          setAllPasskeys(prev => prev.filter(p => p.id !== id));
+        } else {
+          setError('Erreur lors de la suppression');
+        }
+      } catch (e: any) {
+        setError('Erreur lors de la suppression');
+      }
+    };
+
+    const handleDeleteAllUserPasskeys = async (username: string) => {
+      const userPasskeys = allPasskeys.filter(p => p.username === username);
+      if (userPasskeys.length === 0) return;
+      
+      if (!confirm(`Supprimer toutes les clés d'accès (${userPasskeys.length}) de l'utilisateur ${username} ?`)) return;
+      
+      try {
+        const res = await fetch(`/api/admin/passkeys/user/${encodeURIComponent(username)}`, { method: 'DELETE' });
+        if (res.ok) {
+          const result = await res.json();
+          setAllPasskeys(prev => prev.filter(p => p.username !== username));
+          alert(`${result.deleted || userPasskeys.length} clé(s) d'accès supprimée(s)`);
+        } else {
+          setError('Erreur lors de la suppression');
+        }
+      } catch (e: any) {
+        setError('Erreur lors de la suppression');
+      }
+    };
+
+    return (
+      <div>
+        <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>
+          Administration des clés d'accès 🔐
+        </div>
+        
+        {error && (
+          <div style={{
+            padding: '12px 16px',
+            background: 'var(--warn-bg)',
+            border: '1px solid var(--danger)',
+            borderRadius: 8,
+            color: 'var(--danger)',
+            marginBottom: 16
+          }}>
+            {error}
+          </div>
+        )}
+
+        {loading ? (
+          <div style={{ color: 'var(--muted)', padding: 16, textAlign: 'center' }}>
+            Chargement...
+          </div>
+        ) : (
+          <div>
+            <div style={{ marginBottom: 16, color: 'var(--muted)', fontSize: 14 }}>
+              Total: {allPasskeys.length} clé(s) d'accès pour {new Set(allPasskeys.map(p => p.username)).size} utilisateur(s)
+            </div>
+            
+            {allPasskeys.length === 0 ? (
+              <div style={{ color: 'var(--muted)', padding: 16, textAlign: 'center' }}>
+                Aucune clé d'accès configurée
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: 12 }}>
+                {Object.entries(
+                  allPasskeys.reduce((acc, passkey) => {
+                    if (!acc[passkey.username]) acc[passkey.username] = [];
+                    acc[passkey.username].push(passkey);
+                    return acc;
+                  }, {} as Record<string, typeof allPasskeys>)
+                ).map(([username, userPasskeys]) => (
+                  <div
+                    key={username}
+                    style={{
+                      border: '1px solid var(--border)',
+                      borderRadius: 8,
+                      padding: '12px 16px',
+                      background: 'var(--card)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 16 }}>
+                          {username}
+                        </div>
+                        <div style={{ color: 'var(--muted-2)', fontSize: 12 }}>
+                          {userPasskeys.length} clé(s) d'accès
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAllUserPasskeys(username)}
+                        disabled={userPasskeys.length === 0}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: 6,
+                          border: '1px solid var(--danger)',
+                          background: userPasskeys.length === 0 ? 'var(--muted-2)' : 'var(--danger)',
+                          color: 'white',
+                          fontSize: 12,
+                          fontWeight: 500,
+                          cursor: userPasskeys.length === 0 ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        🗑️ Tout supprimer
+                      </button>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      {userPasskeys.map((passkey) => (
+                        <div
+                          key={passkey.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 12,
+                            padding: '8px 12px',
+                            border: '1px solid var(--border)',
+                            borderRadius: 6,
+                            background: 'var(--panel)',
+                            fontSize: 14
+                          }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 500, marginBottom: 2 }}>
+                              {passkey.name}
+                            </div>
+                            <div style={{ color: 'var(--muted-2)', fontSize: 11 }}>
+                              Créée le {new Date(passkey.createdAt).toLocaleString()} •{' '}
+                              {passkey.credentialDeviceType === 'multiDevice' ? 'Multi-appareils' : 'Appareil unique'} •{' '}
+                              {passkey.credentialBackedUp ? 'Sauvegardée' : 'Non sauvegardée'}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePasskey(passkey.id, passkey.username, passkey.name)}
+                            style={{
+                              padding: '4px 8px',
+                              borderRadius: 4,
+                              border: '1px solid var(--danger)',
+                              background: 'var(--danger)',
+                              color: 'white',
+                              fontSize: 11
+                            }}
+                          >
+                            🗑️ Supprimer
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -2076,6 +2694,8 @@ export function App() {
                 <button type="button" onClick={createUser} disabled={!newUser.username || !newUser.password} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--accent)', background: 'var(--accent)', color: 'white' }}>Créer</button>
               </div>
             </div>
+            
+            <AdminPasskeyManagement />
           </>
         )}
       </div>
@@ -2706,6 +3326,9 @@ export function App() {
                 </div>
               </div>
             )}
+
+            <PasskeyManagement />
+
           </div>
         </section>
       )}
