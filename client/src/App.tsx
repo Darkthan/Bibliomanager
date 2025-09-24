@@ -2268,25 +2268,27 @@ export function App() {
           <p style={{ color: 'var(--muted)' }}>Accès restreint. Connectez-vous avec un profil Administration ou Import/Ajouts.</p>
         )}
         <div className="add-form-wrapper" style={{ marginBottom: 12 }}>
-          <input
-            aria-label="Rechercher un livre (ISBN, code-barres, titre, auteur)"
-            placeholder="Rechercher un livre…"
-            value={addQuery}
-            onFocus={() => setShowAddSuggestions(true)}
-            onBlur={() => setTimeout(() => setShowAddSuggestions(false), 100)}
-            onChange={(e) => { setAddQuery(e.target.value); setShowAddSuggestions(true); }}
-            onKeyDown={(e) => {
-              if (!showAddSuggestions && addSuggestions.length > 0) setShowAddSuggestions(true);
-              if (addSuggestions.length === 0) return;
-              if (e.key === 'ArrowDown') { e.preventDefault(); setAddHighlightIndex((i) => (i + 1) % addSuggestions.length); }
-              else if (e.key === 'ArrowUp') { e.preventDefault(); setAddHighlightIndex((i) => (i - 1 + addSuggestions.length) % addSuggestions.length); }
-              else if (e.key === 'Enter') { if (addHighlightIndex >= 0) { e.preventDefault(); openEditionPicker(addSuggestions[addHighlightIndex]); } }
-              else if (e.key === 'Escape') { setShowAddSuggestions(false); }
-            }}
-                  style={{ width: '100%', maxWidth: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)', boxSizing: 'border-box' }}
-          />
+          {!showEditionPicker && (
+            <input
+              aria-label="Rechercher un livre (ISBN, code-barres, titre, auteur)"
+              placeholder="Rechercher un livre…"
+              value={addQuery}
+              onFocus={() => setShowAddSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowAddSuggestions(false), 100)}
+              onChange={(e) => { setAddQuery(e.target.value); setShowAddSuggestions(true); }}
+              onKeyDown={(e) => {
+                if (!showAddSuggestions && addSuggestions.length > 0) setShowAddSuggestions(true);
+                if (addSuggestions.length === 0) return;
+                if (e.key === 'ArrowDown') { e.preventDefault(); setAddHighlightIndex((i) => (i + 1) % addSuggestions.length); }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); setAddHighlightIndex((i) => (i - 1 + addSuggestions.length) % addSuggestions.length); }
+                else if (e.key === 'Enter') { if (addHighlightIndex >= 0) { e.preventDefault(); openEditionPicker(addSuggestions[addHighlightIndex]); } }
+                else if (e.key === 'Escape') { setShowAddSuggestions(false); }
+              }}
+              style={{ width: '100%', maxWidth: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)', boxSizing: 'border-box' }}
+            />
+          )}
           {showEditionPicker && (
-            <div style={{ position: 'absolute', zIndex: 10, top: '100%', left: 0, right: 0, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 10, marginTop: 6, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>
+            <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 10, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                 <strong>Choisir une édition</strong>
                 <button type="button" onMouseDown={(e) => { e.preventDefault(); setShowEditionPicker(false); }} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Fermer</button>
@@ -2311,7 +2313,7 @@ export function App() {
                           ) : ed.coverUrl ? (
                             <img src={ed.coverUrl} alt="" width={30} height={44} style={{ objectFit: 'cover', borderRadius: 4 }} />
                           ) : (
-                            <div style={{ width: 30, height: 44, background: 'var(--card-placeholder)', borderRadius: 4 }} />
+                            <div style={{ width: 30, height={44}, background: 'var(--card-placeholder)', borderRadius: 4 }} />
                           )}
                           <div style={{ minWidth: 0 }}>
                             <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ed.title || title}</div>
