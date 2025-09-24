@@ -88,10 +88,23 @@ The server is implemented as a single large file (src/server.ts) containing:
 - File-based data storage (JSON files in data/ directory)
 - Environment-based configuration (development vs production)
 
+### Production Configuration
+
+#### WebAuthn Setup
+For WebAuthn/Passkeys to work in production, set these environment variables:
+- `RP_ID`: Must match your domain (e.g., `services.beaupeyrat.com`)
+- `RP_ORIGIN`: Must match your full origin URL (e.g., `https://services.beaupeyrat.com`)
+
+#### Local Printer Agent
+- The application can use a local Windows agent for Zebra printer integration
+- Agent runs on `localhost:9110` and is only accessible from the same machine
+- CORS errors from the agent are expected when running in production
+- The app gracefully handles agent unavailability
+
 ### Domain Context
 Bibliomanager is a library management system focusing on:
 - Book catalog management
-- User/patron management  
+- User/patron management
 - Loan/borrowing system
 - Physical item tracking (RFID integration planned)
 - Print services for labels
