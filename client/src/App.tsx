@@ -44,6 +44,7 @@ export function App() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'read' | 'unread'>('all');
   const [sortBy, setSortBy] = useState<'recent' | 'title' | 'author' | 'addedAsc' | 'addedDesc'>('recent');
   const [loans, setLoans] = useState<Loan[]>([]);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
   const [loanBookId, setLoanBookId] = useState<number | ''>('');
   const [loanBookQuery, setLoanBookQuery] = useState('');
   const [showBookSuggestions, setShowBookSuggestions] = useState(false);
@@ -558,18 +559,59 @@ export function App() {
     }
   }, [loans]);
 
-  // Server sync (debounced)
+  // Server sync function
+  const syncToServer = async (immediate = false) => {
+    if (!immediate) setSyncStatus('syncing');
+    try {
+      const response = await fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ books, loans }),
+      });
+      if (response.ok) {
+        if (!immediate) setSyncStatus('success');
+      } else {
+        if (!immediate) {
+          setSyncStatus('error');
+          console.warn('Server sync failed, data saved locally only');
+        }
+      }
+    } catch (error) {
+      if (!immediate) {
+        setSyncStatus('error');
+        console.warn('Server sync failed, data saved locally only:', error);
+      }
+    }
+    
+    // Reset status after delay
+    if (!immediate) {
+      setTimeout(() => setSyncStatus('idle'), 2000);
+    }
+  };
+
+  // Server sync (debounced for normal changes)
   useEffect(() => {
     const t = setTimeout(() => {
-      try {
-        fetch('/api/state', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ books, loans }),
-        }).catch(() => {});
-      } catch {}
-    }, 300);
+      syncToServer(false);
+    }, 500);
     return () => clearTimeout(t);
+  }, [books, loans]);
+
+  // Immediate sync before page unload to prevent data loss
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // Use sendBeacon for reliable sync during page unload
+      if (navigator.sendBeacon && books.length > 0) {
+        try {
+          const payload = JSON.stringify({ books, loans });
+          const blob = new Blob([payload], { type: 'application/json' });
+          navigator.sendBeacon('/api/state', blob);
+        } catch {}
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [books, loans]);
 
   function addBook() {
@@ -1901,7 +1943,7 @@ export function App() {
     setImportInput('');
   }
 
-  function importAllToLibrary() {
+  async function importAllToLibrary() {
     console.log('importAllToLibrary called', { importItems });
     const okItems = importItems.filter((it) => it.status === 'ok');
     console.log('okItems found:', okItems.length, okItems);
@@ -1971,6 +2013,15 @@ export function App() {
     
     setImportItems((prev) => prev.filter((it) => it.status !== 'ok'));
     
+    // Force immediate sync after import to prevent data loss
+    if (toAdd.length > 0) {
+      try {
+        await syncToServer(true);
+      } catch (error) {
+        console.warn('Failed to sync after import:', error);
+      }
+    }
+
     if (allRelevantIds.length > 0) {
       console.log('Opening print modal for', allRelevantIds.length, 'books');
       setLastImportedIds(addedIds); // Pour le bandeau, utiliser seulement les nouveaux
@@ -2052,6 +2103,30 @@ export function App() {
           <h1 style={{ margin: 0 }}>Bibliomanager</h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {syncStatus !== 'idle' && (
+          <div 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 6, 
+              padding: '4px 8px', 
+              borderRadius: 12, 
+              fontSize: 12,
+              fontWeight: 500,
+              background: syncStatus === 'syncing' ? 'var(--accent-weak)' : 
+                         syncStatus === 'success' ? 'var(--chip-ok-bg)' : 'var(--chip-bad-bg)',
+              color: syncStatus === 'syncing' ? 'var(--accent)' : 
+                     syncStatus === 'success' ? 'var(--chip-ok-text)' : 'var(--chip-bad-text)',
+              border: '1px solid ' + (syncStatus === 'syncing' ? 'var(--accent)' : 
+                                     syncStatus === 'success' ? 'var(--chip-ok-border)' : 'var(--chip-bad-border)')
+            }}
+            title={syncStatus === 'syncing' ? 'Synchronisation en cours...' : 
+                   syncStatus === 'success' ? 'Données sauvegardées' : 'Erreur de synchronisation'}
+          >
+            {syncStatus === 'syncing' ? '⏳' : syncStatus === 'success' ? '✓' : '⚠️'}
+            {syncStatus === 'syncing' ? 'Sync...' : syncStatus === 'success' ? 'Sauvé' : 'Erreur'}
+          </div>
+        )}
         <button
           type="button"
           aria-label="Paramètres"
