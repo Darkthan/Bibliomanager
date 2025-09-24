@@ -30,6 +30,10 @@ RUN echo "BUILD_ID=${BUILD_ID}"
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Copy package files and install only production dependencies
+COPY --from=build /app/package*.json ./
+RUN npm ci --only=production --no-audit --no-fund
+
 # Copy built artifacts and static assets
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/assets ./assets
