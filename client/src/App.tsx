@@ -368,6 +368,7 @@ export function App() {
   const [csvItems, setCsvItems] = useState<CsvItem[]>([]);
   const [csvError, setCsvError] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const sqlFileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   function downloadCsvExample() {
     const sample = 'title,author,isbn,epc,id\nLe Petit Prince,Antoine de Saint-Exupéry,9782070612758,,1\nSans ISBN,Auteur Inconnu,,ABCDEF0123456789ABCDEF01,2\n';
@@ -440,6 +441,165 @@ export function App() {
       return [...toAdd, ...prev];
     });
     setCsvItems([]); setCsvText(''); setCsvError(null);
+  }
+
+  // Fonctions d'export/import pour admin
+  function exportToCSV() {
+    const activeBooks = books.filter(b => !b.deleted);
+    if (activeBooks.length === 0) {
+      alert('Aucun livre à exporter');
+      return;
+    }
+    
+    const headers = 'title,author,isbn,epc,id';
+    const rows = activeBooks.map(b => {
+      const title = (b.title || '').replace(/,/g, '""').replace(/"/g, '""');
+      const author = (b.author || '').replace(/,/g, '""').replace(/"/g, '""');
+      const isbn = b.isbn || '';
+      const epc = b.epc || '';
+      const id = b.id || '';
+      return `"${title}","${author}","${isbn}","${epc}","${id}"`;
+    });
+    
+    const csvContent = [headers, ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = new Date().toISOString().split('T')[0];
+    a.href = url; 
+    a.download = `bibliomanager-export-${date}.csv`;
+    document.body.appendChild(a); 
+    a.click(); 
+    a.remove();
+    URL.revokeObjectURL(url);
+    alert(`Export réussi: ${activeBooks.length} livre(s) exporté(s)`);
+  }
+
+  function exportToSQL() {
+    const activeBooks = books.filter(b => !b.deleted);
+    if (activeBooks.length === 0) {
+      alert('Aucun livre à exporter');
+      return;
+    }
+
+    let sql = `-- Export Bibliomanager - ${new Date().toISOString()}\n`;
+    sql += `-- ${activeBooks.length} livre(s) exporté(s)\n\n`;
+    sql += `DROP TABLE IF EXISTS books;\n`;
+    sql += `CREATE TABLE books (\n`;
+    sql += `  id INTEGER PRIMARY KEY,\n`;
+    sql += `  epc TEXT NOT NULL,\n`;
+    sql += `  title TEXT NOT NULL,\n`;
+    sql += `  author TEXT NOT NULL,\n`;
+    sql += `  read BOOLEAN DEFAULT 0,\n`;
+    sql += `  createdAt INTEGER NOT NULL,\n`;
+    sql += `  isbn TEXT,\n`;
+    sql += `  barcode TEXT,\n`;
+    sql += `  coverUrl TEXT\n`;
+    sql += `);\n\n`;
+
+    sql += `INSERT INTO books (id, epc, title, author, read, createdAt, isbn, barcode, coverUrl) VALUES\n`;
+    const values = activeBooks.map(b => {
+      const title = (b.title || '').replace(/'/g, "''");
+      const author = (b.author || '').replace(/'/g, "''");
+      const epc = (b.epc || '').replace(/'/g, "''");
+      const isbn = b.isbn ? `'${b.isbn.replace(/'/g, "''")}'` : 'NULL';
+      const barcode = b.barcode ? `'${b.barcode.replace(/'/g, "''")}'` : 'NULL';
+      const coverUrl = b.coverUrl ? `'${b.coverUrl.replace(/'/g, "''")}'` : 'NULL';
+      return `  (${b.id}, '${epc}', '${title}', '${author}', ${b.read ? 1 : 0}, ${b.createdAt}, ${isbn}, ${barcode}, ${coverUrl})`;
+    });
+    sql += values.join(',\n') + ';\n';
+
+    const blob = new Blob([sql], { type: 'text/sql;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = new Date().toISOString().split('T')[0];
+    a.href = url; 
+    a.download = `bibliomanager-export-${date}.sql`;
+    document.body.appendChild(a); 
+    a.click(); 
+    a.remove();
+    URL.revokeObjectURL(url);
+    alert(`Export SQL réussi: ${activeBooks.length} livre(s) exporté(s)`);
+  }
+
+  async function handleSQLFileImport(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const content = await file.text();
+      await importFromSQL(content);
+      event.target.value = ''; // Reset file input
+    } catch (error: any) {
+      alert('Erreur lors de la lecture du fichier: ' + (error?.message || 'Erreur inconnue'));
+    }
+  }
+
+  async function importFromSQL(sqlContent: string) {
+    if (!confirm('ATTENTION: Cette opération va remplacer complètement votre base de données actuelle. Êtes-vous sûr de vouloir continuer ?')) {
+      return;
+    }
+
+    try {
+      // Parser le contenu SQL pour extraire les données
+      const insertMatch = sqlContent.match(/INSERT INTO books.*?VALUES\s*\n([\s\S]*?);/i);
+      if (!insertMatch) {
+        throw new Error('Format SQL invalide: aucune instruction INSERT trouvée');
+      }
+
+      const valuesContent = insertMatch[1];
+      const lines = valuesContent.split(/,\s*\n/).map(line => line.trim());
+      
+      const newBooks: Book[] = [];
+      let maxId = 0;
+
+      for (const line of lines) {
+        const match = line.match(/\(\s*(\d+),\s*'([^']*)',\s*'([^']*)',\s*'([^']*)',\s*(\d+),\s*(\d+),\s*(NULL|'[^']*'),\s*(NULL|'[^']*'),\s*(NULL|'[^']*')\s*\)$/);
+        if (!match) continue;
+
+        const id = parseInt(match[1]);
+        const epc = match[2].replace(/''/g, "'");
+        const title = match[3].replace(/''/g, "'");
+        const author = match[4].replace(/''/g, "'");
+        const read = match[5] === '1';
+        const createdAt = parseInt(match[6]);
+        const isbn = match[7] === 'NULL' ? undefined : match[7].slice(1, -1).replace(/''/g, "'");
+        const barcode = match[8] === 'NULL' ? undefined : match[8].slice(1, -1).replace(/''/g, "'");
+        const coverUrl = match[9] === 'NULL' ? undefined : match[9].slice(1, -1).replace(/''/g, "'");
+
+        maxId = Math.max(maxId, id);
+        
+        newBooks.push({
+          id,
+          epc,
+          title,
+          author,
+          read,
+          createdAt,
+          isbn,
+          barcode,
+          coverUrl
+        });
+      }
+
+      if (newBooks.length === 0) {
+        throw new Error('Aucune donnée valide trouvée dans le fichier SQL');
+      }
+
+      // Remplacer complètement la base de données
+      setBooks(newBooks);
+      
+      // Forcer une synchronisation immédiate
+      try {
+        await syncToServer(true);
+      } catch (error) {
+        console.warn('Failed to sync after SQL import:', error);
+      }
+
+      alert(`Import SQL réussi: ${newBooks.length} livre(s) importé(s). La base de données a été complètement remplacée.`);
+    } catch (error: any) {
+      alert('Erreur lors de l\'import SQL: ' + (error?.message || 'Format de fichier invalide'));
+    }
   }
   useEffect(() => {
     const sync = () => setRoute(window.location.pathname || '/');
@@ -2470,6 +2630,79 @@ export function App() {
                 </div>
                 <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 6 }}>
                   Les livres supprimés sont conservés dans la corbeille jusqu'à suppression définitive.
+                </div>
+              </div>
+            )}
+
+            {isAdmin && (
+              <div>
+                <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Export / Import de la base de données</div>
+                <div style={{ display: 'grid', gap: 12 }}>
+                  <div>
+                    <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 14 }}>Export</div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={exportToCSV}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: 6,
+                          border: '1px solid var(--success)',
+                          background: 'var(--success)',
+                          color: 'white',
+                          fontSize: 14,
+                          fontWeight: 500
+                        }}
+                      >
+                        📄 Exporter en CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={exportToSQL}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: 6,
+                          border: '1px solid var(--success)',
+                          background: 'var(--success)',
+                          color: 'white',
+                          fontSize: 14,
+                          fontWeight: 500
+                        }}
+                      >
+                        🗃️ Exporter en SQL
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 14 }}>Import SQL</div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <input
+                        ref={sqlFileInputRef}
+                        type="file"
+                        accept=".sql,text/sql"
+                        onChange={handleSQLFileImport}
+                        style={{ display: 'none' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => sqlFileInputRef.current?.click()}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: 6,
+                          border: '1px solid var(--accent)',
+                          background: 'var(--accent)',
+                          color: 'white',
+                          fontSize: 14,
+                          fontWeight: 500
+                        }}
+                      >
+                        📥 Importer depuis SQL
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 6 }}>
+                  Le CSV exporté est compatible avec l'import en masse. L'import SQL remplace complètement la base existante.
                 </div>
               </div>
             )}
