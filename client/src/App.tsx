@@ -363,14 +363,14 @@ export function App() {
     }, function () { alert('Impossible de récupérer l\'imprimante par défaut.'); });
   }
   // Import CSV (sauvegarde/restauration)
-  type CsvItem = { title: string; author: string; isbn?: string; epc?: string; status: 'ok' | 'error'; error?: string };
+  type CsvItem = { title: string; author: string; isbn?: string; epc?: string; id?: number; status: 'ok' | 'error'; error?: string };
   const [csvText, setCsvText] = useState('');
   const [csvItems, setCsvItems] = useState<CsvItem[]>([]);
   const [csvError, setCsvError] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   function downloadCsvExample() {
-    const sample = 'title,author,isbn,epc\nLe Petit Prince,Antoine de Saint-Exupéry,9782070612758,\nSans ISBN,Auteur Inconnu,,ABCDEF0123456789ABCDEF01\n';
+    const sample = 'title,author,isbn,epc,id\nLe Petit Prince,Antoine de Saint-Exupéry,9782070612758,,1\nSans ISBN,Auteur Inconnu,,ABCDEF0123456789ABCDEF01,2\n';
     const blob = new Blob([sample], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -385,7 +385,7 @@ export function App() {
     if (lines.length === 0) { setCsvItems([]); return; }
     let headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
     let start = 0;
-    if (['title','author','isbn','epc'].some((h) => headers.includes(h))) start = 1; else headers = ['title','author','isbn','epc'];
+    if (['title','author','isbn','epc','id'].some((h) => headers.includes(h))) start = 1; else headers = ['title','author','isbn','epc','id'];
     const out: CsvItem[] = [];
     for (let i = start; i < lines.length; i++) {
       const cols = lines[i].split(',').map((c) => c.trim());
@@ -397,9 +397,12 @@ export function App() {
       const author = get('author');
       const isbn = get('isbn');
       const epc = get('epc');
-      if (!title || !author) { out.push({ title, author, isbn, epc, status: 'error', error: 'Titre et auteur requis' }); continue; }
-      if (epc && !/^([0-9A-Fa-f]{24})$/.test(epc)) { out.push({ title, author, isbn, epc, status: 'error', error: 'EPC invalide (24 hex)' }); continue; }
-      out.push({ title, author, isbn: isbn || undefined, epc: epc ? epc.toUpperCase() : undefined, status: 'ok' });
+      const idStr = get('id');
+      const id = idStr ? parseInt(idStr, 10) : undefined;
+      if (!title || !author) { out.push({ title, author, isbn, epc, id, status: 'error', error: 'Titre et auteur requis' }); continue; }
+      if (epc && !/^([0-9A-Fa-f]{24})$/.test(epc)) { out.push({ title, author, isbn, epc, id, status: 'error', error: 'EPC invalide (24 hex)' }); continue; }
+      if (idStr && (isNaN(id!) || id! <= 0)) { out.push({ title, author, isbn, epc, id, status: 'error', error: 'ID invalide (nombre positif requis)' }); continue; }
+      out.push({ title, author, isbn: isbn || undefined, epc: epc ? epc.toUpperCase() : undefined, id: id && id > 0 ? id : undefined, status: 'ok' });
     }
     setCsvItems(out);
   }
@@ -410,14 +413,17 @@ export function App() {
     setBooks((prev) => {
       const existsByIsbn = new Set(prev.map((b) => (b.isbn || '').toUpperCase()).filter(Boolean));
       const existsByEpc = new Set(prev.map((b) => b.epc));
+      const existsById = new Set(prev.map((b) => b.id));
       const toAdd: Book[] = [];
       for (const it of ok) {
         const isbnUp = (it.isbn || '').toUpperCase();
         if ((isbnUp && existsByIsbn.has(isbnUp))) continue;
+        if (it.id && existsById.has(it.id)) continue;
         const epcCode = it.epc && /^([0-9A-F]{24})$/.test(it.epc) && !existsByEpc.has(it.epc) ? it.epc : genEpc96();
         const coverUrl = isbnUp ? `/covers/isbn/${isbnUp}?s=M` : undefined;
+        const bookId = it.id && it.id > 0 ? it.id : (Date.now() + Math.floor(Math.random() * 1000));
         toAdd.push({
-          id: Date.now() + Math.floor(Math.random() * 1000),
+          id: bookId,
           epc: epcCode,
           title: it.title,
           author: it.author,
@@ -428,6 +434,7 @@ export function App() {
         });
         if (isbnUp) existsByIsbn.add(isbnUp);
         existsByEpc.add(epcCode);
+        existsById.add(bookId);
       }
       if (toAdd.length === 0) return prev;
       return [...toAdd, ...prev];
@@ -3425,7 +3432,7 @@ export function App() {
               fontWeight: importMode === 'csv' ? 700 : 500,
             }}
           >
-            CSV (titre,auteur,isbn,epc)
+            CSV (titre,auteur,isbn,epc,id)
           </button>
         </div>
 
@@ -3506,11 +3513,11 @@ export function App() {
                 parseCsv(text);
               }} />
             </div>
-            <label style={{ fontWeight: 600 }}>Coller du CSV (entêtes: title,author,isbn,epc)</label>
+            <label style={{ fontWeight: 600 }}>Coller du CSV (entêtes: title,author,isbn,epc,id)</label>
             <textarea
               aria-label="CSV"
               rows={6}
-              placeholder="title,author,isbn,epc\nMon titre,Mon auteur,978...,ABCDEF0123456789ABCDEF01"
+              placeholder="title,author,isbn,epc,id\nMon titre,Mon auteur,978...,ABCDEF0123456789ABCDEF01,123"
               value={csvText}
               onChange={(e) => { setCsvText(e.target.value); parseCsv(e.target.value); }}
               style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
@@ -3526,7 +3533,7 @@ export function App() {
                   <li key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px' }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.title} — <span style={{ fontWeight: 400 }}>{it.author}</span></div>
-                      <div style={{ color: 'var(--muted)', fontSize: 12 }}>{it.isbn ? `ISBN ${it.isbn}` : 'ISBN non fourni'}{it.epc ? ` · EPC ${it.epc}` : ''}</div>
+                      <div style={{ color: 'var(--muted)', fontSize: 12 }}>{it.isbn ? `ISBN ${it.isbn}` : 'ISBN non fourni'}{it.epc ? ` · EPC ${it.epc}` : ''}{it.id ? ` · ID ${it.id}` : ''}</div>
                     </div>
                     <span style={{ padding: '4px 8px', borderRadius: 999, fontSize: 12, border: '1px solid var(--border)', background: it.status === 'ok' ? 'var(--chip-ok-bg)' : 'var(--chip-bad-bg)', color: it.status === 'ok' ? 'var(--chip-ok-text)' : 'var(--chip-bad-text)' }}>
                       {it.status === 'ok' ? 'OK' : it.error || 'Erreur'}
