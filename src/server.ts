@@ -254,6 +254,9 @@ async function writeWebAuthnConfig(config: { rpId: string; rpOrigin: string; rpN
 
 // Helper functions for base64url encoding/decoding
 function uint8ArrayToBase64url(buffer: Uint8Array | any): string {
+  if (buffer instanceof Uint8Array) {
+    return isoBase64URL.fromBuffer(new Uint8Array(buffer));
+  }
   return isoBase64URL.fromBuffer(new Uint8Array(buffer));
 }
 
@@ -655,9 +658,12 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const passkeys = await readPasskeys();
         console.log('Current passkeys before adding:', passkeys.length);
 
+        const credentialID = uint8ArrayToBase64url(registrationInfo.credential.id);
+        console.log('Converted credentialID:', credentialID);
+
         const newPasskey: PasskeyRecord = {
           id: randomBytes(16).toString('hex'),
-          credentialID: uint8ArrayToBase64url(registrationInfo.credential.id),
+          credentialID,
           credentialPublicKey: uint8ArrayToBase64url(registrationInfo.credential.publicKey),
           counter: registrationInfo.credential.counter,
           credentialDeviceType: registrationInfo.credentialDeviceType,
