@@ -67,6 +67,25 @@ export function App() {
   const [editingBookId, setEditingBookId] = useState<number | null>(null);
   const [loanListQuery, setLoanListQuery] = useState('');
   const [route, setRoute] = useState('/livres/disponibles');
+  // Lightweight wrapper to group advanced settings by theme
+  function SettingsBlock({ title, children }: { title: string; children: React.ReactNode }) {
+    return (
+      <section
+        aria-label={title}
+        style={{
+          border: '1px solid var(--border)',
+          borderRadius: 10,
+          padding: 16,
+          background: 'var(--card)',
+          display: 'grid',
+          gap: 16,
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: 16 }}>{title}</div>
+        {children}
+      </section>
+    );
+  }
   // Thème (clair/sombre)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try {
@@ -3270,6 +3289,7 @@ export function App() {
 
           {/* PARAMÈTRES AVANCÉS */}
           <div style={{ display: showAdvancedSettings ? 'grid' : 'none', gap: 20 }}>
+            <SettingsBlock title="Apparence">
             <div>
               <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Apparence</div>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
@@ -3282,8 +3302,9 @@ export function App() {
               </label>
               <div style={{ color: 'var(--muted-2)', fontSize: 13, marginTop: 6 }}>S'applique immédiatement et est enregistré localement.</div>
             </div>
+            </SettingsBlock>
             {isAdmin && (
-              <>
+              <SettingsBlock title="Impression">
                 <div>
                   <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Imprimante Zebra (réseau)</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
@@ -3343,10 +3364,11 @@ export function App() {
                   </div>
                   <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 6 }}>L'agent écoute sur http://localhost:9110.</div>
                 </div>
-              </>
+              </SettingsBlock>
             )}
 
             {isAdmin && (
+              <SettingsBlock title="Sécurité">
               <div>
                 <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Clés API</div>
                 <div style={{ display: 'grid', gap: 10 }}>
@@ -3399,9 +3421,11 @@ export function App() {
                   )}
                 </div>
               </div>
+              </SettingsBlock>
             )}
 
             {isAdmin && (
+              <SettingsBlock title="Sécurité">
               <div>
                 <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Configuration WebAuthn/Passkeys 🔐</div>
                 <div style={{ display: 'grid', gap: 12 }}>
@@ -3553,9 +3577,11 @@ export function App() {
                   </div>
                 </div>
               </div>
+              </SettingsBlock>
             )}
 
             {isAdmin && (
+              <SettingsBlock title="Données">
               <div>
                 <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Corbeille</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -3585,9 +3611,11 @@ export function App() {
                   Les livres supprimés sont conservés dans la corbeille jusqu'à suppression définitive.
                 </div>
               </div>
+              </SettingsBlock>
             )}
 
             {isAdmin && (
+              <SettingsBlock title="Données">
               <div>
                 <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Export / Import de la base de données</div>
                 <div style={{ display: 'grid', gap: 12 }}>
@@ -3658,9 +3686,12 @@ export function App() {
                   Le CSV exporté est compatible avec l'import en masse. L'import SQL remplace complètement la base existante.
                 </div>
               </div>
+              </SettingsBlock>
             )}
 
-            <PasskeyManagement />
+            <SettingsBlock title="Sécurité">
+              <PasskeyManagement />
+            </SettingsBlock>
 
           </div>
         </section>
