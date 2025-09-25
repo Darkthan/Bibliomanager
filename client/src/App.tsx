@@ -249,6 +249,18 @@ export function App() {
   }, [printerHost, printerPort, printerDpi]);
 
   function escZpl(text: string) { return (text || '').replace(/[\^~]/g, ' '); }
+  function toZplUtf8Hex(text: string) {
+    try {
+      const bytes = new TextEncoder().encode(text || '');
+      let out = '';
+      for (let i = 0; i < bytes.length; i++) {
+        const b = bytes[i];
+        const h = b.toString(16).toUpperCase().padStart(2, '0');
+        out += '_' + h;
+      }
+      return out;
+    } catch { return ''; }
+  }
   function shortIdFromEpc(epc: string) {
     try {
       let h = 5381 >>> 0;
@@ -312,11 +324,11 @@ export function App() {
     return `^XA\n^CI28\n^PW${w}\n^LL${h}\n^LH0,0\n`
       + `^RFW,H,2,6^FD${b.epc}^FS\n`
       + `^FO${xQr},${yQr}\n^BQN,2,${mag}\n^FDLA,${b.epc}^FS\n`
-      + `^FO${xText},${yTitle}\n^A0N,${titleDot},${titleDot}^FB${textWidth},${titleLinesMax},${lineGap},L,0^FD${title}^FS\n`
-      + `^FO${xText},${yAuthor}\n^A0N,${authorDot},${authorDot}^FB${textWidth},${authorLinesMax},${lineGap},L,0^FD${author}^FS\n`
+      + `^FO${xText},${yTitle}\n^A0N,${titleDot},${titleDot}^FB${textWidth},${titleLinesMax},${lineGap},L,0^FH^FD${toZplUtf8Hex(title)}^FS\n`
+      + `^FO${xText},${yAuthor}\n^A0N,${authorDot},${authorDot}^FB${textWidth},${authorLinesMax},${lineGap},L,0^FH^FD${toZplUtf8Hex(author)}^FS\n`
       // ID en "gras" (double impression légère) + Code128 compact
-      + `^FO${xText},${yShort}\n^A0N,${idDot},${idDot}^FB${textWidth},1,0,L,0^FDID: ${sid}^FS\n`
-      + `^FO${xText + 1},${yShort}\n^A0N,${idDot},${idDot}^FB${textWidth},1,0,L,0^FDID: ${sid}^FS\n`
+      + `^FO${xText},${yShort}\n^A0N,${idDot},${idDot}^FB${textWidth},1,0,L,0^FH^FD${toZplUtf8Hex('ID: ' + sid)}^FS\n`
+      + `^FO${xText + 1},${yShort}\n^A0N,${idDot},${idDot}^FB${textWidth},1,0,L,0^FH^FD${toZplUtf8Hex('ID: ' + sid)}^FS\n`
       + `^FO${xText},${yBar}\n^BY1,2,${barH}\n^BCN,,N,N,N\n^FD${sid}^FS\n`
       + `^XZ`;
   }
