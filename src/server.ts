@@ -803,6 +803,11 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         console.log('Found passkey for user:', passkey.username);
 
         const webauthnConfig = await getWebAuthnConfig();
+        console.log('WebAuthn config for verification:', webauthnConfig);
+        console.log('Expected challenge:', challengeRecord.challenge);
+        console.log('Response ID:', response.id);
+        console.log('Response raw:', JSON.stringify(response, null, 2));
+
         const verification = await verifyAuthenticationResponse({
           response: response as AuthenticationResponseJSON,
           expectedChallenge: challengeRecord.challenge,
