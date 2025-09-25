@@ -658,8 +658,8 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const passkeys = await readPasskeys();
         console.log('Current passkeys before adding:', passkeys.length);
 
-        const credentialID = uint8ArrayToBase64url(registrationInfo.credential.id);
-        console.log('Converted credentialID:', credentialID);
+        const credentialID = registrationInfo.credential.id; // Déjà une chaîne base64url
+        console.log('Using credentialID:', credentialID);
 
         const newPasskey: PasskeyRecord = {
           id: randomBytes(16).toString('hex'),
