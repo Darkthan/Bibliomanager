@@ -255,7 +255,7 @@ function uint8ArrayToBase64url(buffer: Uint8Array | any): string {
 }
 
 function base64urlToUint8Array(base64url: string): Uint8Array {
-  return isoBase64URL.toBuffer(base64url);
+  return new Uint8Array(isoBase64URL.toBuffer(base64url));
 }
 
 function cleanExpiredChallenges() {
@@ -574,6 +574,12 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
             transports: passkey.transports,
           } as any)),
           supportedAlgorithmIDs: [-7, -257], // ES256, RS256
+          authenticatorSelection: {
+            authenticatorAttachment: 'platform',
+            userVerification: 'preferred',
+            requireResidentKey: true, // Crée des discoverable credentials
+            residentKey: 'required',
+          },
         });
 
         const challengeKey = `${username}-${Date.now()}`;
@@ -668,6 +674,37 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  // Usernameless WebAuthn authentication (discoverable credentials)
+  if (method === 'POST' && url.pathname === '/api/auth/webauthn/authenticate/usernameless/begin') {
+    (async () => {
+      try {
+        cleanExpiredChallenges();
+
+        const webauthnConfig = await getWebAuthnConfig();
+        console.log('WebAuthn Usernameless Auth Configuration:', webauthnConfig);
+
+        const options = await generateAuthenticationOptions({
+          rpID: webauthnConfig.rpID,
+          allowCredentials: [], // Vide pour permettre la découverte automatique
+          userVerification: 'preferred',
+        });
+
+        const challengeKey = `usernameless-auth-${Date.now()}`;
+        challenges.set(challengeKey, {
+          challenge: options.challenge,
+          username: '', // Pas de nom d'utilisateur spécifié
+          expiresAt: Date.now() + 300000, // 5 minutes
+        });
+
+        return sendJSON(res, 200, { options, challengeKey });
+      } catch (e: any) {
+        console.error('Usernameless auth begin error:', e);
+        return sendJSON(res, 500, { error: 'auth_begin_failed', message: e?.message || String(e) });
+      }
+    })();
+    return;
+  }
+
   if (method === 'POST' && url.pathname === '/api/auth/webauthn/authenticate/begin') {
     (async () => {
       try {
@@ -698,10 +735,11 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
 
         const options = await generateAuthenticationOptions({
           rpID: webauthnConfig.rpID,
-          allowCredentials: userPasskeys.map(passkey => ({
-            id: passkey.credentialID,
-            transports: passkey.transports,
-          } as any)),
+          // Pour les discoverable credentials, on peut soit :
+          // 1. Ne pas spécifier allowCredentials (permet usernameless auth)
+          // 2. Ou spécifier les credentials existants (compatibilité)
+          allowCredentials: [], // Vide = permet découverte automatique
+          userVerification: 'preferred',
         });
 
         const challengeKey = `auth-${username}-${Date.now()}`;
@@ -717,6 +755,78 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         });
       } catch (e: any) {
         return sendJSON(res, 500, { error: 'auth_failed', message: e?.message || String(e) });
+      }
+    })();
+    return;
+  }
+
+  // Usernameless WebAuthn authentication finish
+  if (method === 'POST' && url.pathname === '/api/auth/webauthn/authenticate/usernameless/finish') {
+    (async () => {
+      try {
+        const chunks: Buffer[] = [];
+        await new Promise<void>((resolve, reject) => { req.on('data', (c) => chunks.push(c as Buffer)); req.on('end', resolve); req.on('error', reject); });
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
+
+        const { challengeKey, response } = body;
+        if (!challengeKey || !response) return sendJSON(res, 400, { error: 'missing_data' });
+
+        const challengeRecord = challenges.get(challengeKey);
+        if (!challengeRecord || challengeRecord.expiresAt < Date.now()) {
+          challenges.delete(challengeKey);
+          return sendJSON(res, 400, { error: 'invalid_challenge' });
+        }
+
+        const passkeys = await readPasskeys();
+
+        // Pour usernameless auth, on cherche dans toutes les passkeys
+        const credentialID = response.id;
+        const passkey = passkeys.find(p => p.credentialID === credentialID);
+
+        if (!passkey) {
+          return sendJSON(res, 400, { error: 'credential_not_found' });
+        }
+
+        const webauthnConfig = await getWebAuthnConfig();
+        const verification = await verifyAuthenticationResponse({
+          response: response as AuthenticationResponseJSON,
+          expectedChallenge: challengeRecord.challenge,
+          expectedOrigin: webauthnConfig.rpOrigin,
+          expectedRPID: webauthnConfig.rpID,
+          credential: {
+            id: passkey.credentialID,
+            publicKey: base64urlToUint8Array(passkey.credentialPublicKey) as any,
+            counter: passkey.counter,
+            transports: passkey.transports,
+          },
+        });
+
+        if (!verification.verified) {
+          return sendJSON(res, 400, { error: 'verification_failed' });
+        }
+
+        // Update counter
+        passkey.counter = verification.authenticationInfo.newCounter;
+        await writePasskeys(passkeys);
+
+        // Create session for the discovered user
+        const username = passkey.username;
+        const users = await readUsers();
+        const u = users.find((x) => x.username === username);
+        if (!u) {
+          return sendJSON(res, 400, { error: 'user_not_found' });
+        }
+
+        const ttl = 60 * 60 * 12; // 12h
+        const exp = Math.floor(Date.now() / 1000) + ttl;
+        const token = await signToken({ u: u.username, r: Array.isArray(u.roles) ? u.roles : [], exp });
+        setCookie(res, 'bm2_auth', token, { httpOnly: true, sameSite: 'Lax', maxAge: ttl });
+
+        challenges.delete(challengeKey);
+        return sendJSON(res, 200, { success: true, username });
+      } catch (e: any) {
+        console.error('Usernameless auth finish error:', e);
+        return sendJSON(res, 500, { error: 'authentication_failed', message: e?.message || String(e) });
       }
     })();
     return;
@@ -756,7 +866,7 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
           expectedRPID: webauthnConfig.rpID,
           credential: {
             id: passkey.credentialID,
-            publicKey: passkey.credentialPublicKey,
+            publicKey: base64urlToUint8Array(passkey.credentialPublicKey) as any,
             counter: passkey.counter,
             transports: passkey.transports,
           } as any,
