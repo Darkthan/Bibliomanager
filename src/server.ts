@@ -203,6 +203,7 @@ async function readPasskeys(): Promise<PasskeyRecord[]> {
   try {
     const buf = await readFile(passkeysPath);
     const arr = JSON.parse(buf.toString('utf-8')) as any[];
+    console.log('Read passkeys from file:', arr.length, 'entries');
     if (Array.isArray(arr)) {
       return arr.map((p: any) => ({
         id: String(p.id),
@@ -217,7 +218,9 @@ async function readPasskeys(): Promise<PasskeyRecord[]> {
         createdAt: Number(p.createdAt || Date.now()),
       }));
     }
-  } catch {}
+  } catch (err) {
+    console.log('Error reading passkeys file or file does not exist:', err instanceof Error ? err.message : String(err));
+  }
   return [];
 }
 
@@ -640,6 +643,7 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
 
         const { registrationInfo } = verification;
         const passkeys = await readPasskeys();
+        console.log('Current passkeys before adding:', passkeys.length);
 
         const newPasskey: PasskeyRecord = {
           id: randomBytes(16).toString('hex'),
@@ -655,7 +659,11 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         };
 
         passkeys.push(newPasskey);
+        console.log('New passkey created:', { id: newPasskey.id, credentialID: newPasskey.credentialID, username: newPasskey.username });
+        console.log('Total passkeys after adding:', passkeys.length);
+
         await writePasskeys(passkeys);
+        console.log('Passkeys written to file successfully');
 
         challenges.delete(challengeKey);
 
