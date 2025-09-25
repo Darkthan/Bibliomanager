@@ -283,19 +283,9 @@ export function App() {
     const qrSideMm = 17.0;
     const approxQrDots = Math.round(qrSideMm * dpmm);
     const mag = dpi >= 600 ? 3 : dpi >= 300 ? 4 : 5;
-    // Tronquer le titre s'il est trop long pour 2 lignes (estimation ~25 chars par ligne)
-    let title = b.title;
-    if (title.length > 50) {
-      title = title.substring(0, 47) + '...';
-    }
-    title = escZpl(title);
-    
-    // Tronquer l'auteur s'il est trop long pour 2 lignes (estimation ~25 chars par ligne)
-    let author = b.author;
-    if (author.length > 50) {
-      author = author.substring(0, 47) + '...';
-    }
-    author = escZpl(author);
+    // Texte brut
+    const rawTitle = b.title || '';
+    const rawAuthor = b.author || '';
     
     const xQr = margin;
     // Centrer le QR verticalement, avec une légère compensation vers le haut (quiet zone)
@@ -313,6 +303,18 @@ export function App() {
     // Calcul d'un y pour l'auteur qui laisse la place à 2 lignes de titre
     const yAuthor = yTitle + (titleDot * titleLinesMax) + (lineGap * (titleLinesMax - 1)) + Math.round(0.3 * dpmm);
     let yShort = yAuthor + (authorDot * authorLinesMax) + (lineGap * (authorLinesMax - 1)) + Math.round(0.4 * dpmm);
+
+    // Limiter la longueur du titre/auteur pour éviter toute réécriture par-dessus
+    function clampTextToLines(text: string, dotSize: number, linesMax: number) {
+      const approxCharWidth = Math.max(6, Math.round(dotSize * 0.62));
+      const perLine = Math.max(8, Math.floor(textWidth / approxCharWidth));
+      const maxChars = Math.max(10, perLine * linesMax);
+      let t = (text || '').replace(/\s+/g, ' ').trim();
+      if (t.length > maxChars) t = t.slice(0, Math.max(0, maxChars - 1)) + '…';
+      return t;
+    }
+    const title = clampTextToLines(rawTitle, titleDot, titleLinesMax);
+    const author = clampTextToLines(rawAuthor, authorDot, authorLinesMax);
     const sid = shortIdFromEpc(b.epc);
     const barH = Math.max(10, Math.round(5.2 * dpmm));
     const bottomLimit = h - barH - Math.round(0.6 * dpmm);
