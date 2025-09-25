@@ -298,23 +298,25 @@ export function App() {
     const idDot = Math.max(7, Math.round(1.9 * dpmm));     // petite ligne
     const lineGap = Math.max(1, Math.round(0.4 * dpmm));
     const titleLinesMax = 2;
-    const authorLinesMax = 2;
+    const authorLinesMax = 1; // Auteur sur une seule ligne
     const textWidth = Math.max(20, w - xText - margin);
     // Calcul d'un y pour l'auteur qui laisse la place à 2 lignes de titre
     const yAuthor = yTitle + (titleDot * titleLinesMax) + (lineGap * (titleLinesMax - 1)) + Math.round(0.3 * dpmm);
     let yShort = yAuthor + (authorDot * authorLinesMax) + (lineGap * (authorLinesMax - 1)) + Math.round(0.4 * dpmm);
 
-    // Limiter la longueur du titre/auteur pour éviter toute réécriture par-dessus
-    function clampTextToLines(text: string, dotSize: number, linesMax: number) {
-      const approxCharWidth = Math.max(6, Math.round(dotSize * 0.62));
-      const perLine = Math.max(8, Math.floor(textWidth / approxCharWidth));
-      const maxChars = Math.max(10, perLine * linesMax);
-      let t = (text || '').replace(/\s+/g, ' ').trim();
-      if (t.length > maxChars) t = t.slice(0, Math.max(0, maxChars - 1)) + '…';
+    // Limites strictes: 2 lignes titre (≤30 chars) et 1 ligne auteur (≤20 chars)
+    const titleMaxChars = 30;
+    const authorMaxChars = 20;
+    const title = (() => {
+      let t = (rawTitle || '').replace(/\s+/g, ' ').trim();
+      if (t.length > titleMaxChars) t = t.slice(0, titleMaxChars - 1) + '…';
       return t;
-    }
-    const title = clampTextToLines(rawTitle, titleDot, titleLinesMax);
-    const author = clampTextToLines(rawAuthor, authorDot, authorLinesMax);
+    })();
+    const author = (() => {
+      let t = (rawAuthor || '').replace(/\s+/g, ' ').trim();
+      if (t.length > authorMaxChars) t = t.slice(0, authorMaxChars - 1) + '…';
+      return t;
+    })();
     const sid = shortIdFromEpc(b.epc);
     const barH = Math.max(10, Math.round(5.2 * dpmm));
     const bottomLimit = h - barH - Math.round(0.6 * dpmm);
