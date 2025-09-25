@@ -2406,7 +2406,31 @@ export function App() {
               <span style={{ fontSize: '20px' }}>🔑</span>
               {usernamelessLoading ? 'Authentification...' : 'Se connecter avec passkey'}
             </button>
-            {/* Séparateur supprimé sur demande */}
+            {/* Séparateur sous le bouton passkey */}
+            <div style={{
+              textAlign: 'center',
+              color: 'var(--muted)',
+              fontSize: 14,
+              position: 'relative',
+              margin: '10px 0'
+            }}>
+              <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: 0,
+                right: 0,
+                height: '1px',
+                background: 'var(--border)'
+              }} />
+              <span style={{
+                background: 'var(--panel)',
+                padding: '0 15px',
+                position: 'relative',
+                zIndex: 1
+              }}>
+                ou
+              </span>
+            </div>
           </>
         )}
         <div>
@@ -2469,30 +2493,7 @@ export function App() {
             {err}
           </div>
         )}
-        <div style={{ 
-          textAlign: 'center', 
-          color: 'var(--muted)', 
-          fontSize: 14,
-          position: 'relative',
-          margin: '10px 0'
-        }}>
-          <div style={{ 
-            position: 'absolute', 
-            top: '50%', 
-            left: 0, 
-            right: 0, 
-            height: '1px', 
-            background: 'var(--border)' 
-          }} />
-          <span style={{ 
-            background: 'var(--panel)', 
-            padding: '0 15px',
-            position: 'relative',
-            zIndex: 1
-          }}>
-            ou
-          </span>
-        </div>
+        {/* Séparateur au-dessus du bouton mot de passe supprimé */}
         <button 
           type="submit" 
           disabled={loading || !u || !p} 
