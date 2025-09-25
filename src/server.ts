@@ -692,6 +692,10 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         cleanExpiredChallenges();
 
         const webauthnConfig = await getWebAuthnConfig();
+        console.log('WebAuthn Auth Configuration:', webauthnConfig);
+        console.log('User has passkeys:', userPasskeys.length);
+        console.log('User passkeys details:', userPasskeys.map(p => ({ id: p.id, name: p.name, createdAt: p.createdAt })));
+
         const options = await generateAuthenticationOptions({
           rpID: webauthnConfig.rpID,
           allowCredentials: userPasskeys.map(passkey => ({
@@ -947,6 +951,38 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
       }
 
       return sendJSON(res, 405, { error: 'method_not_allowed' });
+    })();
+    return;
+  }
+
+  // WebAuthn Debug: GET /api/admin/webauthn-debug
+  if (method === 'GET' && url.pathname === '/api/admin/webauthn-debug') {
+    (async () => {
+      const cookies = parseCookies(req);
+      const token = cookies['bm2_auth'] || '';
+      const claims = token ? await verifyToken(token) : null;
+      if (!claims || !claims.r.includes('admin')) return sendJSON(res, 401, { error: 'unauthorized' });
+
+      const adminConfig = await readWebAuthnConfig();
+      const effectiveConfig = await getWebAuthnConfig();
+      const passkeys = await readPasskeys();
+
+      return sendJSON(res, 200, {
+        adminConfig,
+        effectiveConfig,
+        environmentDefaults: {
+          rpID: defaultRpID,
+          rpName: defaultRpName,
+          rpOrigin: defaultRpOrigin,
+        },
+        passeysCount: passkeys.length,
+        passkeys: passkeys.map(p => ({
+          id: p.id,
+          username: p.username,
+          name: p.name,
+          createdAt: p.createdAt,
+        })),
+      });
     })();
     return;
   }

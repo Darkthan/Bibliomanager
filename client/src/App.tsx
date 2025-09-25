@@ -3362,6 +3362,65 @@ export function App() {
                        webauthnConfigSaved === 'error' ? 'Erreur lors de la sauvegarde' :
                        'Enregistrer la configuration'}
                     </button>
+
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const r = await fetch('/api/admin/webauthn-debug');
+                            if (r.ok) {
+                              const debug = await r.json();
+                              console.log('=== DEBUG WEBAUTHN ===');
+                              console.log('Configuration Admin:', debug.adminConfig);
+                              console.log('Configuration Effective:', debug.effectiveConfig);
+                              console.log('Défauts Environnement:', debug.environmentDefaults);
+                              console.log('Passkeys:', debug.passkeys);
+                              alert(`Debug WebAuthn affiché dans la console.\nPasskeys: ${debug.passeysCount}\nrpID effectif: ${debug.effectiveConfig.rpID}`);
+                            }
+                          } catch (e) {
+                            alert('Erreur lors du debug: ' + e);
+                          }
+                        }}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: 6,
+                          border: '1px solid var(--border)',
+                          background: 'var(--btn-secondary-bg)',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🔍 Debug WebAuthn
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!confirm('Supprimer TOUTES les passkeys de votre compte ?\n\nCeci est irréversible et vous devrez vous reconnecter avec mot de passe.')) return;
+                          try {
+                            const r = await fetch(`/api/admin/passkeys/user/${encodeURIComponent(me.username || '')}`, { method: 'DELETE' });
+                            if (r.ok) {
+                              const result = await r.json();
+                              alert(`${result.deleted || 0} passkey(s) supprimée(s). Vous pouvez maintenant créer de nouvelles passkeys avec la bonne configuration.`);
+                            } else {
+                              alert('Erreur lors de la suppression');
+                            }
+                          } catch (e) {
+                            alert('Erreur: ' + e);
+                          }
+                        }}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: 6,
+                          border: '1px solid var(--danger-border)',
+                          background: 'var(--danger-bg)',
+                          color: 'var(--danger-text)',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🗑️ Supprimer mes passkeys
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
