@@ -734,6 +734,12 @@ export function App() {
       throw new Error(`Erreur lors de l'authentification: ${error.message || error}`);
     }
 
+    console.log('Sending usernameless auth data:', {
+      challengeKey: options.challengeKey,
+      responseId: authResponse.id,
+      response: authResponse
+    });
+
     const finishRes = await fetch('/api/auth/webauthn/authenticate/usernameless/finish', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

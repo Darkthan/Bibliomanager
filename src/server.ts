@@ -769,23 +769,32 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
 
         const { challengeKey, response } = body;
-        if (!challengeKey || !response) return sendJSON(res, 400, { error: 'missing_data' });
+        console.log('Usernameless auth finish - challengeKey:', challengeKey, 'response.id:', response?.id);
+        if (!challengeKey || !response) {
+          console.log('Missing data - challengeKey:', !!challengeKey, 'response:', !!response);
+          return sendJSON(res, 400, { error: 'missing_data' });
+        }
 
         const challengeRecord = challenges.get(challengeKey);
         if (!challengeRecord || challengeRecord.expiresAt < Date.now()) {
+          console.log('Invalid challenge - found:', !!challengeRecord, 'expired:', challengeRecord ? challengeRecord.expiresAt < Date.now() : 'N/A');
           challenges.delete(challengeKey);
           return sendJSON(res, 400, { error: 'invalid_challenge' });
         }
 
         const passkeys = await readPasskeys();
+        console.log('Total passkeys:', passkeys.length);
 
         // Pour usernameless auth, on cherche dans toutes les passkeys
         const credentialID = response.id;
+        console.log('Looking for credentialID:', credentialID);
         const passkey = passkeys.find(p => p.credentialID === credentialID);
 
         if (!passkey) {
+          console.log('Credential not found. Available credentials:', passkeys.map(p => p.credentialID));
           return sendJSON(res, 400, { error: 'credential_not_found' });
         }
+        console.log('Found passkey for user:', passkey.username);
 
         const webauthnConfig = await getWebAuthnConfig();
         const verification = await verifyAuthenticationResponse({
@@ -801,7 +810,9 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
           },
         });
 
+        console.log('Verification result:', verification.verified);
         if (!verification.verified) {
+          console.log('Verification failed:', verification);
           return sendJSON(res, 400, { error: 'verification_failed' });
         }
 
