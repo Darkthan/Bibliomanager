@@ -286,7 +286,8 @@ export function App() {
     author = escZpl(author);
     
     const xQr = margin;
-    const yQr = Math.max(0, Math.round((h - approxQrDots) / 2));
+    // Centrer le QR verticalement, avec une légère compensation vers le haut (quiet zone)
+    const yQr = Math.max(0, Math.round((h - approxQrDots) / 2) - Math.round(1.0 * dpmm));
     const xText = xQr + approxQrDots + Math.round(1.8 * dpmm);
     const yTitle = margin;
     // Tailles de police plus petites et multi-lignes possibles pour le titre
@@ -299,10 +300,15 @@ export function App() {
     const textWidth = Math.max(20, w - xText - margin);
     // Calcul d'un y pour l'auteur qui laisse la place à 2 lignes de titre
     const yAuthor = yTitle + (titleDot * titleLinesMax) + (lineGap * (titleLinesMax - 1)) + Math.round(0.3 * dpmm);
-    const yShort = yAuthor + (authorDot * authorLinesMax) + (lineGap * (authorLinesMax - 1)) + Math.round(0.4 * dpmm);
+    let yShort = yAuthor + (authorDot * authorLinesMax) + (lineGap * (authorLinesMax - 1)) + Math.round(0.4 * dpmm);
     const sid = shortIdFromEpc(b.epc);
     const barH = Math.max(10, Math.round(5.2 * dpmm));
-    const yBar = Math.min(h - barH - Math.round(0.6 * dpmm), yShort + idDot + Math.round(0.4 * dpmm));
+    const bottomLimit = h - barH - Math.round(0.6 * dpmm);
+    const idMinGap = Math.max(1, Math.round(0.8 * dpmm));
+    // S'assurer que l'ID ne chevauche jamais le code-barres: placer le code-barres en bas
+    // et remonter l'ID si nécessaire pour garantir un écart minimal.
+    yShort = Math.min(yShort, bottomLimit - idDot - idMinGap);
+    const yBar = bottomLimit;
     return `^XA\n^CI28\n^PW${w}\n^LL${h}\n^LH0,0\n`
       + `^RFW,H,2,6^FD${b.epc}^FS\n`
       + `^FO${xQr},${yQr}\n^BQN,2,${mag}\n^FDLA,${b.epc}^FS\n`
