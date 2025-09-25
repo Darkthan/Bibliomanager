@@ -299,6 +299,19 @@ export function App() {
       return out;
     } catch { return '000000'; }
   }
+  // Online state and edit permission
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  useEffect(() => {
+    const update = () => setIsOnline(typeof navigator !== 'undefined' ? navigator.onLine : true);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => { window.removeEventListener('online', update); window.removeEventListener('offline', update); };
+  }, []);
+  const canEditNow = !!me.username && isOnline;
+  function requireEdit() {
+    if (!canEditNow) { alert('Mode consultation uniquement (hors ligne ou non connecté).'); return false; }
+    return true;
+  }
   function buildZplLabel(b: Book, dpi: number) {
     const dpmm = dpi / 25.4;
     const w = Math.round(44 * dpmm);
@@ -504,6 +517,7 @@ export function App() {
   }
 
   function importCsvItems() {
+    if (!requireEdit()) { alert('Import désactivé en mode consultation.'); return; }
     const ok = csvItems.filter((x) => x.status === 'ok');
     if (ok.length === 0) { setCsvError('Aucun élément valide à importer'); return; }
     setBooks((prev) => {
@@ -631,6 +645,7 @@ export function App() {
   }
 
   async function importFromSQL(sqlContent: string) {
+    if (!requireEdit()) { alert('Import désactivé en mode consultation.'); return; }
     if (!confirm('ATTENTION: Cette opération va remplacer complètement votre base de données actuelle. Êtes-vous sûr de vouloir continuer ?')) {
       return;
     }
@@ -911,7 +926,10 @@ export function App() {
     if (route !== '/prets') stopLoanCameraScan();
   }, [route]);
 
-  // Persistence: load once (server first, fallback to public endpoint then localStorage)
+  function saveViewCache(state: { books: any[]; loans: any[] }) {
+    try { localStorage.setItem('bm2/viewState', JSON.stringify(state)); } catch {}
+  }
+  // Persistence: load once (server first, fallback to public endpoint then cache)
   useEffect(() => {
     (async () => {
       let loaded = false;
@@ -933,6 +951,7 @@ export function App() {
             }));
             setBooks(migratedBooks);
             if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
+            saveViewCache({ books: d.books, loans: Array.isArray(d.loans) ? d.loans : [] });
             loaded = true;
           }
         } else if (r.status === 401) {
@@ -955,6 +974,7 @@ export function App() {
                 }));
                 setBooks(migratedBooks);
                 if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
+                saveViewCache({ books: d.books, loans: Array.isArray(d.loans) ? d.loans : [] });
                 loaded = true;
               }
             }
@@ -965,30 +985,24 @@ export function App() {
       }
       if (!loaded) {
         try {
-          const raw = localStorage.getItem('bm2/books');
-          if (raw) {
-            const parsed = JSON.parse(raw) as any[];
-            if (Array.isArray(parsed)) {
-              const migrated: Book[] = parsed.map((b: any) => ({
-                id: typeof b.id === 'number' ? b.id : Date.now(),
-                epc: typeof b.epc === 'string' && /^([0-9A-Fa-f]{24})$/.test(b.epc) ? String(b.epc).toUpperCase() : genEpc96(),
-                title: String(b.title || ''),
-                author: String(b.author || ''),
-                read: !!b.read,
-                createdAt: typeof b.createdAt === 'number' ? b.createdAt : Date.now(),
-                isbn: b.isbn || undefined,
-                barcode: b.barcode || undefined,
-                coverUrl: b.coverUrl || undefined,
-              }));
-              setBooks(migrated);
-            }
-          }
-        } catch {}
-        try {
-          const rawLoans = localStorage.getItem('bm2/loans');
-          if (rawLoans) {
-            const parsed = JSON.parse(rawLoans) as Loan[];
-            if (Array.isArray(parsed)) setLoans(parsed);
+          const cacheRaw = localStorage.getItem('bm2/viewState');
+          if (cacheRaw) {
+            const d = JSON.parse(cacheRaw);
+            const booksArr = Array.isArray(d?.books) ? d.books : [];
+            const loansArr = Array.isArray(d?.loans) ? d.loans : [];
+            const migrated: Book[] = booksArr.map((b: any) => ({
+              id: typeof b.id === 'number' ? b.id : Date.now(),
+              epc: typeof b.epc === 'string' && /^([0-9A-Fa-f]{24})$/.test(b.epc) ? String(b.epc).toUpperCase() : genEpc96(),
+              title: String(b.title || ''),
+              author: String(b.author || ''),
+              read: !!b.read,
+              createdAt: typeof b.createdAt === 'number' ? b.createdAt : Date.now(),
+              isbn: b.isbn || undefined,
+              barcode: b.barcode || undefined,
+              coverUrl: b.coverUrl || undefined,
+            }));
+            setBooks(migrated);
+            setLoans(Array.isArray(loansArr) ? loansArr : []);
           }
         } catch {}
       }
@@ -1032,6 +1046,7 @@ export function App() {
                 coverUrl: b.coverUrl || undefined,
               })));
               if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
+              saveViewCache({ books: d.books, loans: Array.isArray(d.loans) ? d.loans : [] });
             }
           }
         } else {
@@ -1052,6 +1067,7 @@ export function App() {
                 coverUrl: b.coverUrl || undefined,
               })));
               if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
+              saveViewCache({ books: d.books, loans: Array.isArray(d.loans) ? d.loans : [] });
             }
           }
         }
@@ -1061,22 +1077,7 @@ export function App() {
     })();
   }, [me.username]);
 
-  // Persistence: save on change
-  useEffect(() => {
-    try {
-      localStorage.setItem('bm2/books', JSON.stringify(books));
-    } catch {
-      // ignore
-    }
-  }, [books]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('bm2/loans', JSON.stringify(loans));
-    } catch {
-      // ignore
-    }
-  }, [loans]);
+  // Ne plus persister les modifications en local; la cache de visualisation est écrite après un fetch serveur.
 
   // Server sync function
   const syncToServer = async (immediate = false) => {
@@ -1141,6 +1142,7 @@ export function App() {
   }, [books, loans]);
 
   function addBook() {
+    if (!requireEdit()) return;
     if (isAddDisabled) return;
     const cleanIsbn = isbn.replace(/[^0-9Xx]/g, '').toUpperCase();
     const coverUrl = cleanIsbn ? `/covers/isbn/${cleanIsbn}?s=M` : undefined;
@@ -1165,6 +1167,7 @@ export function App() {
   }
 
   function removeBook(id: number) {
+    if (!requireEdit()) return;
     const book = books.find(b => b.id === id);
     const bookTitle = book ? book.title : 'ce livre';
     
@@ -1178,12 +1181,14 @@ export function App() {
   }
 
   function restoreBook(id: number) {
+    if (!requireEdit()) return;
     setBooks((prev) => prev.map((b) => 
       b.id === id ? { ...b, deleted: false, deletedAt: undefined } : b
     ));
   }
 
   function permanentDeleteBook(id: number) {
+    if (!requireEdit()) return;
     const book = books.find(b => b.id === id);
     const bookTitle = book ? book.title : 'ce livre';
     
@@ -1195,6 +1200,7 @@ export function App() {
   }
 
   function saveBookEdit(id: number, patch: Partial<Book>) {
+    if (!requireEdit()) return;
     setBooks((prev) =>
       prev.map((b) => {
         if (b.id !== id) return b;
@@ -1232,6 +1238,7 @@ export function App() {
   }
 
   function toggleRead(id: number) {
+    if (!requireEdit()) return;
     setBooks((prev) => prev.map((b) => (b.id === id ? { ...b, read: !b.read } : b)));
   }
 
@@ -2001,6 +2008,7 @@ export function App() {
   }, [addQuery, showAddSuggestions]);
 
   function addBookDirect(t: string, a: string, isbnVal?: string, barcodeVal?: string) {
+    if (!requireEdit()) return;
     if (t.trim().length === 0 || a.trim().length === 0) return;
     const cleanIsbn = (isbnVal || '').replace(/[^0-9Xx]/g, '').toUpperCase();
     const cleanBarcode = (barcodeVal || '').trim();
@@ -2115,6 +2123,7 @@ export function App() {
   }
 
   function addLoan() {
+    if (!requireEdit()) return;
     if (!loanBookId || loanBorrower.trim() === '' || loanStartDate === '' || loanDueDate === '') return;
     setLoans((prev) => [
       {
@@ -2131,8 +2140,13 @@ export function App() {
   }
 
   function returnLoan(id: number) {
+    if (!requireEdit()) return;
     const today = new Date().toISOString().slice(0, 10);
     setLoans((prev) => prev.map((l) => (l.id === id ? { ...l, returnedAt: today } : l)));
+  }
+  function deleteLoan(id: number) {
+    if (!requireEdit()) return;
+    setLoans((prev) => prev.filter((x) => x.id !== id));
   }
 
   const loanUtils = {
@@ -2230,7 +2244,7 @@ export function App() {
                   </button>
                 )}
                 <button
-                  onClick={() => setLoans((prev) => prev.filter((x) => x.id !== l.id))}
+                  onClick={() => deleteLoan(l.id)}
                   style={{
                     padding: '8px 10px',
                     borderRadius: 6,
@@ -2975,6 +2989,7 @@ export function App() {
   }
 
   async function importAllToLibrary() {
+    if (!requireEdit()) { alert('Import désactivé en mode consultation.'); return; }
     console.log('importAllToLibrary called', { importItems });
     const okItems = importItems.filter((it) => it.status === 'ok');
     console.log('okItems found:', okItems.length, okItems);
@@ -3201,6 +3216,19 @@ export function App() {
         )}
         </div>
       </header>
+
+      {me.username && !isOnline && (
+        <div style={{
+          margin: '8px 0',
+          padding: '8px 12px',
+          borderRadius: 8,
+          border: '1px solid var(--warn-text)',
+          background: 'var(--warn-bg)',
+          color: 'var(--warn-text)'
+        }}>
+          Mode hors ligne: modifications désactivées (consultation uniquement)
+        </div>
+      )}
 
       {route !== '/' && me.username && (
         <nav className={`main-nav${navOpen ? ' is-open' : ''}`} aria-label="Navigation principale" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -4932,6 +4960,7 @@ export function App() {
                 <div style={{ marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                   <button 
                     onClick={() => {
+                      if (!requireEdit()) return;
                       if (confirm('Êtes-vous sûr de vouloir vider entièrement la corbeille ? Cette action est irréversible.')) {
                         setBooks(prev => prev.filter(b => !b.deleted));
                       }
@@ -4949,6 +4978,7 @@ export function App() {
                   </button>
                   <button 
                     onClick={() => {
+                      if (!requireEdit()) return;
                       if (confirm('Êtes-vous sûr de vouloir restaurer tous les livres de la corbeille ?')) {
                         setBooks(prev => prev.map(b => b.deleted ? { ...b, deleted: false, deletedAt: undefined } : b));
                       }
