@@ -792,7 +792,13 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
 
         if (!passkey) {
           console.log('Credential not found. Available credentials:', passkeys.map(p => p.credentialID));
-          return sendJSON(res, 400, { error: 'credential_not_found' });
+          return sendJSON(res, 400, {
+            error: 'credential_not_found',
+            debug: {
+              requestedId: credentialID,
+              availableIds: passkeys.map(p => p.credentialID)
+            }
+          });
         }
         console.log('Found passkey for user:', passkey.username);
 
@@ -813,7 +819,14 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         console.log('Verification result:', verification.verified);
         if (!verification.verified) {
           console.log('Verification failed:', verification);
-          return sendJSON(res, 400, { error: 'verification_failed' });
+          return sendJSON(res, 400, {
+            error: 'verification_failed',
+            debug: {
+              verified: verification.verified,
+              rpID: webauthnConfig.rpID,
+              rpOrigin: webauthnConfig.rpOrigin
+            }
+          });
         }
 
         // Update counter

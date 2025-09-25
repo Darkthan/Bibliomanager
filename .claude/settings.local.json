@@ -11,7 +11,8 @@
       "WebFetch(domain:simplewebauthn.dev)",
       "Bash(git checkout:*)",
       "Bash(npm run dev:server:*)",
-      "Bash(npm run build:client:*)"
+      "Bash(npm run build:client:*)",
+      "Bash(npm run build:server:*)"
     ],
     "deny": [],
     "ask": []

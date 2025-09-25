@@ -750,7 +750,16 @@ export function App() {
     });
 
     if (!finishRes.ok) {
-      throw new Error('Échec de l\'authentification sans nom d\'utilisateur');
+      const errorData = await finishRes.json().catch(() => ({}));
+      console.error('Usernameless auth finish error:', errorData);
+
+      if (errorData.error === 'credential_not_found') {
+        throw new Error(`Passkey introuvable. ID demandé: ${errorData.debug?.requestedId}, IDs disponibles: ${errorData.debug?.availableIds?.join(', ') || 'aucun'}`);
+      } else if (errorData.error === 'verification_failed') {
+        throw new Error(`Vérification échouée. Config: ${JSON.stringify(errorData.debug)}`);
+      } else {
+        throw new Error(`Erreur lors de la finalisation (${errorData.error || finishRes.status}): ${errorData.message || 'Erreur inconnue'}`);
+      }
     }
 
     const result = await finishRes.json();
