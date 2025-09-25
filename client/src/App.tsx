@@ -851,7 +851,7 @@ export function App() {
     if (route !== '/prets') stopLoanCameraScan();
   }, [route]);
 
-  // Persistence: load once (server first, fallback to localStorage)
+  // Persistence: load once (server first, fallback to public endpoint then localStorage)
   useEffect(() => {
     (async () => {
       let loaded = false;
@@ -875,6 +875,30 @@ export function App() {
             if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
             loaded = true;
           }
+        } else if (r.status === 401) {
+          // Try public, read-only state
+          try {
+            const rp = await fetch('/api/state/public');
+            if (rp.ok) {
+              const d = await rp.json();
+              if (d && Array.isArray(d.books)) {
+                const migratedBooks: Book[] = (d.books as any[]).map((b: any) => ({
+                  id: typeof b.id === 'number' ? b.id : Date.now(),
+                  epc: typeof b.epc === 'string' && /^([0-9A-Fa-f]{24})$/.test(b.epc) ? String(b.epc).toUpperCase() : genEpc96(),
+                  title: String(b.title || ''),
+                  author: String(b.author || ''),
+                  read: !!b.read,
+                  createdAt: typeof b.createdAt === 'number' ? b.createdAt : Date.now(),
+                  isbn: b.isbn || undefined,
+                  barcode: b.barcode || undefined,
+                  coverUrl: b.coverUrl || undefined,
+                }));
+                setBooks(migratedBooks);
+                if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
+                loaded = true;
+              }
+            }
+          } catch {}
         }
       } catch {
         // ignore
@@ -920,6 +944,56 @@ export function App() {
       setLoanDueDate(toISO(inDays(14)));
     })();
   }, []);
+
+  // Reload state when auth status changes
+  useEffect(() => {
+    (async () => {
+      try {
+        if (me.username) {
+          const r = await fetch('/api/state', { cache: 'no-store' });
+          if (r.ok) {
+            const d = await r.json();
+            if (d && Array.isArray(d.books)) {
+              setBooks((d.books as any[]).map((b: any) => ({
+                id: typeof b.id === 'number' ? b.id : Date.now(),
+                epc: typeof b.epc === 'string' && /^([0-9A-Fa-f]{24})$/.test(b.epc) ? String(b.epc).toUpperCase() : genEpc96(),
+                title: String(b.title || ''),
+                author: String(b.author || ''),
+                read: !!b.read,
+                createdAt: typeof b.createdAt === 'number' ? b.createdAt : Date.now(),
+                isbn: b.isbn || undefined,
+                barcode: b.barcode || undefined,
+                coverUrl: b.coverUrl || undefined,
+              })));
+              if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
+            }
+          }
+        } else {
+          // Logged out -> try public state
+          const rp = await fetch('/api/state/public', { cache: 'no-store' });
+          if (rp.ok) {
+            const d = await rp.json();
+            if (d && Array.isArray(d.books)) {
+              setBooks((d.books as any[]).map((b: any) => ({
+                id: typeof b.id === 'number' ? b.id : Date.now(),
+                epc: typeof b.epc === 'string' && /^([0-9A-Fa-f]{24})$/.test(b.epc) ? String(b.epc).toUpperCase() : genEpc96(),
+                title: String(b.title || ''),
+                author: String(b.author || ''),
+                read: !!b.read,
+                createdAt: typeof b.createdAt === 'number' ? b.createdAt : Date.now(),
+                isbn: b.isbn || undefined,
+                barcode: b.barcode || undefined,
+                coverUrl: b.coverUrl || undefined,
+              })));
+              if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, [me.username]);
 
   // Persistence: save on change
   useEffect(() => {

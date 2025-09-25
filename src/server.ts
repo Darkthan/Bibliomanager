@@ -460,6 +460,19 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  // Public read-only state (no auth required)
+  if (method === 'GET' && url.pathname === '/api/state/public') {
+    (async () => {
+      try {
+        const state = await readState();
+        return sendJSON(res, 200, state);
+      } catch (e: any) {
+        return sendJSON(res, 500, { error: 'read_state_failed', message: e?.message || String(e) });
+      }
+    })();
+    return;
+  }
+
   // POST new state (replace)
   if (method === 'POST' && url.pathname === '/api/state') {
     (async () => {
