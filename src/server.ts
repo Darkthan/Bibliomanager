@@ -647,9 +647,9 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
 
         const newPasskey: PasskeyRecord = {
           id: randomBytes(16).toString('hex'),
-          credentialID: uint8ArrayToBase64url((registrationInfo as any).credentialID || (registrationInfo as any).credential.id),
-          credentialPublicKey: uint8ArrayToBase64url((registrationInfo as any).credentialPublicKey || (registrationInfo as any).credential.publicKey),
-          counter: (registrationInfo as any).counter || (registrationInfo as any).credential.counter || 0,
+          credentialID: uint8ArrayToBase64url(registrationInfo.credentialID),
+          credentialPublicKey: uint8ArrayToBase64url(registrationInfo.credentialPublicKey),
+          counter: registrationInfo.counter,
           credentialDeviceType: registrationInfo.credentialDeviceType,
           credentialBackedUp: registrationInfo.credentialBackedUp,
           transports: response.response?.transports,
