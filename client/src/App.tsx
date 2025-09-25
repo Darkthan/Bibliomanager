@@ -655,6 +655,20 @@ export function App() {
     sync();
     return () => window.removeEventListener('popstate', sync);
   }, []);
+  // Rediriger toute visite à "/" vers "/livres/disponibles"
+  useEffect(() => {
+    if (route === '/') {
+      navigate('/livres/disponibles');
+    }
+  }, [route]);
+  // Limiter l'accès quand non connecté: autoriser seulement accueil, connexion, paramètres, livres disponibles
+  useEffect(() => {
+    if (me.username) return;
+    const allowed = ['/', '/connexion', '/parametres', '/livres/disponibles'];
+    if (!allowed.includes(route)) {
+      navigate('/livres/disponibles');
+    }
+  }, [me.username, route]);
   function navigate(to: string) {
     if (to === route) return;
     window.history.pushState({}, '', to);
@@ -2392,30 +2406,7 @@ export function App() {
               <span style={{ fontSize: '20px' }}>🔑</span>
               {usernamelessLoading ? 'Authentification...' : 'Se connecter avec passkey'}
             </button>
-            <div style={{
-              textAlign: 'center',
-              color: 'var(--muted)',
-              fontSize: 14,
-              position: 'relative',
-              margin: '10px 0'
-            }}>
-              <div style={{
-                position: 'absolute',
-                top: '50%',
-                left: 0,
-                right: 0,
-                height: '1px',
-                background: 'var(--border)'
-              }} />
-              <span style={{
-                background: 'var(--panel)',
-                padding: '0 15px',
-                position: 'relative',
-                zIndex: 1
-              }}>
-                ou utilisez votre nom d'utilisateur
-              </span>
-            </div>
+            {/* Séparateur supprimé sur demande */}
           </>
         )}
         <div>
@@ -2992,7 +2983,16 @@ export function App() {
             <span style={{ display: 'block', width: 20, height: 2, background: 'var(--text)', margin: '0 auto 4px' }} />
             <span style={{ display: 'block', width: 20, height: 2, background: 'var(--text)', margin: '0 auto' }} />
           </button>
-          <h1 style={{ margin: 0 }}>Bibliomanager</h1>
+          <h1
+            onClick={() => navigate('/livres/disponibles')}
+            role="link"
+            tabIndex={0}
+            title="Aller aux livres disponibles"
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/livres/disponibles'); }}
+            style={{ margin: 0, cursor: 'pointer', userSelect: 'none' }}
+          >
+            Bibliomanager
+          </h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {syncStatus !== 'idle' && (
@@ -3054,7 +3054,7 @@ export function App() {
         </div>
       </header>
 
-      {route !== '/' && (
+      {route !== '/' && me.username && (
         <nav className={`main-nav${navOpen ? ' is-open' : ''}`} aria-label="Navigation principale" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {[
             { to: '/livres/disponibles', label: 'Livres disponibles', show: true },
@@ -3084,113 +3084,7 @@ export function App() {
         </nav>
       )}
 
-      {route === '/' && (
-        <section style={{ padding: 8 }}>
-          <div
-            style={{
-              display: 'grid',
-              gap: 16,
-              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-            }}
-          >
-            <button
-              onClick={() => navigate('/livres/disponibles')}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                justifyContent: 'space-between',
-                padding: 20,
-                borderRadius: 16,
-                border: '2px solid var(--border)',
-                background: 'var(--panel)',
-                minHeight: 140,
-                textAlign: 'left',
-                fontSize: 18,
-                cursor: 'pointer',
-              }}
-            >
-              <div style={{ fontSize: 28 }}>📚</div>
-              <div>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>Livres disponibles</div>
-                <div style={{ color: 'var(--muted)', fontSize: 14 }}>Consulter et prêter rapidement</div>
-              </div>
-            </button>
-
-            <button
-              onClick={() => navigate('/livres/nouveau')}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                justifyContent: 'space-between',
-                padding: 20,
-                borderRadius: 16,
-                border: '2px solid var(--border)',
-                background: 'var(--panel)',
-                minHeight: 140,
-                textAlign: 'left',
-                fontSize: 18,
-                cursor: 'pointer',
-              }}
-            >
-              <div style={{ fontSize: 28 }}>➕</div>
-              <div>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>Gestion des livres</div>
-                <div style={{ color: 'var(--muted)', fontSize: 14 }}>Saisie rapide avec ISBN/CB</div>
-              </div>
-            </button>
-
-            <button
-              onClick={() => navigate('/prets')}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                justifyContent: 'space-between',
-                padding: 20,
-                borderRadius: 16,
-                border: '2px solid var(--border)',
-                background: 'var(--panel)',
-                minHeight: 140,
-                textAlign: 'left',
-                fontSize: 18,
-                cursor: 'pointer',
-              }}
-            >
-              <div style={{ fontSize: 28 }}>📄</div>
-              <div>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>Prêts</div>
-                <div style={{ color: 'var(--muted)', fontSize: 14 }}>Créer et suivre les prêts</div>
-              </div>
-            </button>
-
-            <button
-              onClick={() => navigate('/import')}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                justifyContent: 'space-between',
-                padding: 20,
-                borderRadius: 16,
-                border: '2px solid var(--border)',
-                background: 'var(--panel)',
-                minHeight: 140,
-                textAlign: 'left',
-                fontSize: 18,
-                cursor: 'pointer',
-              }}
-            >
-              <div style={{ fontSize: 28 }}>📦</div>
-              <div>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>Import en masse</div>
-                <div style={{ color: 'var(--muted)', fontSize: 14 }}>Scanner des codes-barres</div>
-              </div>
-            </button>
-          </div>
-        </section>
-      )}
+      {/* Page d'accueil supprimée: redirection automatique vers /livres/disponibles */}
 
       {route === '/parametres' && (
         <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}>
@@ -3689,9 +3583,11 @@ export function App() {
               </SettingsBlock>
             )}
 
-            <SettingsBlock title="Sécurité">
-              <PasskeyManagement />
-            </SettingsBlock>
+            {me.username && (
+              <SettingsBlock title="Sécurité">
+                <PasskeyManagement />
+              </SettingsBlock>
+            )}
 
           </div>
         </section>
