@@ -142,6 +142,10 @@ export function App() {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [apiKeyLabel, setApiKeyLabel] = useState('');
   const [newApiKeyToken, setNewApiKeyToken] = useState<string | null>(null);
+
+  // WebAuthn Configuration (admin)
+  const [webauthnConfig, setWebauthnConfig] = useState({ rpId: '', rpOrigin: '', rpName: '' });
+  const [webauthnConfigSaved, setWebauthnConfigSaved] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   async function probeAgent() {
     try {
       const c = await Promise.race([
@@ -163,6 +167,19 @@ export function App() {
         if (r.ok) {
           const d = await r.json();
           if (Array.isArray(d.keys)) setApiKeys(d.keys);
+        }
+      } catch {}
+
+      // Load WebAuthn configuration
+      try {
+        const r = await fetch('/api/admin/webauthn-config', { cache: 'no-store' });
+        if (r.ok) {
+          const config = await r.json();
+          setWebauthnConfig({
+            rpId: config.rpId || '',
+            rpOrigin: config.rpOrigin || '',
+            rpName: config.rpName || 'Bibliomanager'
+          });
         }
       } catch {}
     })();
@@ -746,6 +763,32 @@ export function App() {
 
     return await finishRes.json();
   }
+
+  // Save WebAuthn configuration
+  async function saveWebauthnConfig() {
+    if (!isAdmin) return;
+
+    setWebauthnConfigSaved('saving');
+    try {
+      const r = await fetch('/api/admin/webauthn-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(webauthnConfig),
+      });
+
+      if (r.ok) {
+        setWebauthnConfigSaved('saved');
+        setTimeout(() => setWebauthnConfigSaved('idle'), 2000);
+      } else {
+        setWebauthnConfigSaved('error');
+        setTimeout(() => setWebauthnConfigSaved('idle'), 3000);
+      }
+    } catch {
+      setWebauthnConfigSaved('error');
+      setTimeout(() => setWebauthnConfigSaved('idle'), 3000);
+    }
+  }
+
   const isAddDisabled = useMemo(() => title.trim().length === 0 || author.trim().length === 0, [title, author]);
 
   // Health check
@@ -3225,6 +3268,101 @@ export function App() {
                       </div>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {isAdmin && (
+              <div>
+                <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Configuration WebAuthn/Passkeys 🔐</div>
+                <div style={{ display: 'grid', gap: 12 }}>
+                  <div style={{ color: 'var(--muted)', fontSize: 13 }}>
+                    Ces paramètres remplacent les variables d'environnement RP_ID, RP_ORIGIN et RP_NAME. Laissez vide pour utiliser les valeurs par défaut.
+                  </div>
+
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div>
+                      <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>Identifiant RP (RP_ID)</label>
+                      <input
+                        type="text"
+                        placeholder="ex: services.beaupeyrat.com"
+                        value={webauthnConfig.rpId}
+                        onChange={(e) => setWebauthnConfig(prev => ({ ...prev, rpId: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: 6,
+                          border: '1px solid var(--border)',
+                          background: 'var(--input-bg)'
+                        }}
+                      />
+                      <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2 }}>
+                        Doit correspondre exactement au domaine où l'application est hébergée
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>Origine RP (RP_ORIGIN)</label>
+                      <input
+                        type="text"
+                        placeholder="ex: https://services.beaupeyrat.com"
+                        value={webauthnConfig.rpOrigin}
+                        onChange={(e) => setWebauthnConfig(prev => ({ ...prev, rpOrigin: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: 6,
+                          border: '1px solid var(--border)',
+                          background: 'var(--input-bg)'
+                        }}
+                      />
+                      <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2 }}>
+                        URL complète avec protocole et domaine
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>Nom RP (RP_NAME)</label>
+                      <input
+                        type="text"
+                        placeholder="ex: Bibliomanager"
+                        value={webauthnConfig.rpName}
+                        onChange={(e) => setWebauthnConfig(prev => ({ ...prev, rpName: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: 6,
+                          border: '1px solid var(--border)',
+                          background: 'var(--input-bg)'
+                        }}
+                      />
+                      <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2 }}>
+                        Nom affiché lors de l'enregistrement de passkeys
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={saveWebauthnConfig}
+                      disabled={webauthnConfigSaved === 'saving'}
+                      style={{
+                        padding: '10px 16px',
+                        borderRadius: 8,
+                        border: '1px solid var(--accent)',
+                        background: webauthnConfigSaved === 'saved' ? 'var(--chip-ok-bg)' :
+                                   webauthnConfigSaved === 'error' ? 'var(--chip-bad-bg)' : 'var(--accent)',
+                        color: webauthnConfigSaved === 'saved' ? 'var(--chip-ok-text)' :
+                               webauthnConfigSaved === 'error' ? 'var(--chip-bad-text)' : 'white',
+                        cursor: webauthnConfigSaved === 'saving' ? 'not-allowed' : 'pointer',
+                        opacity: webauthnConfigSaved === 'saving' ? 0.6 : 1
+                      }}
+                    >
+                      {webauthnConfigSaved === 'saving' ? 'Enregistrement...' :
+                       webauthnConfigSaved === 'saved' ? 'Configuration sauvegardée ✓' :
+                       webauthnConfigSaved === 'error' ? 'Erreur lors de la sauvegarde' :
+                       'Enregistrer la configuration'}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

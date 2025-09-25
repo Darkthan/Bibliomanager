@@ -124,10 +124,20 @@ const usersPath = join(dataDir, 'users.json');
 const secretPath = join(dataDir, 'auth_secret');
 const passkeysPath = join(dataDir, 'passkeys.json');
 
-// WebAuthn configuration
-const rpID = process.env.RP_ID || 'localhost';
-const rpName = 'Bibliomanager';
-const rpOrigin = process.env.RP_ORIGIN || `http://localhost:${process.env.PORT || 3000}`;
+// WebAuthn configuration - defaults from environment
+const defaultRpID = process.env.RP_ID || 'localhost';
+const defaultRpName = 'Bibliomanager';
+const defaultRpOrigin = process.env.RP_ORIGIN || `http://localhost:${process.env.PORT || 3000}`;
+
+// Get effective WebAuthn configuration (admin config takes precedence over env vars)
+async function getWebAuthnConfig() {
+  const adminConfig = await readWebAuthnConfig();
+  return {
+    rpID: adminConfig.rpId || defaultRpID,
+    rpName: adminConfig.rpName || defaultRpName,
+    rpOrigin: adminConfig.rpOrigin || defaultRpOrigin,
+  };
+}
 
 // In-memory storage for challenges (in production, use Redis or similar)
 const challenges = new Map<string, ChallengeRecord>();
@@ -214,6 +224,29 @@ async function readPasskeys(): Promise<PasskeyRecord[]> {
 async function writePasskeys(passkeys: PasskeyRecord[]) {
   await mkdir(dataDir, { recursive: true });
   await fsWriteFile(passkeysPath, JSON.stringify(passkeys, null, 2));
+}
+
+// WebAuthn Configuration
+const webauthnConfigPath = join(dataDir, 'webauthn_config.json');
+
+async function readWebAuthnConfig(): Promise<{ rpId: string; rpOrigin: string; rpName: string }> {
+  try {
+    const data = await readFile(webauthnConfigPath, 'utf-8');
+    const config = JSON.parse(data);
+    return {
+      rpId: String(config.rpId || '').trim(),
+      rpOrigin: String(config.rpOrigin || '').trim(),
+      rpName: String(config.rpName || 'Bibliomanager').trim(),
+    };
+  } catch {
+    // Return default/empty config if file doesn't exist or can't be read
+    return { rpId: '', rpOrigin: '', rpName: 'Bibliomanager' };
+  }
+}
+
+async function writeWebAuthnConfig(config: { rpId: string; rpOrigin: string; rpName: string }) {
+  await mkdir(dataDir, { recursive: true });
+  await fsWriteFile(webauthnConfigPath, JSON.stringify(config, null, 2));
 }
 
 // Helper functions for base64url encoding/decoding
@@ -526,11 +559,12 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
 
         cleanExpiredChallenges();
 
-        console.log('WebAuthn RP Configuration:', { rpID, rpName, rpOrigin });
+        const webauthnConfig = await getWebAuthnConfig();
+        console.log('WebAuthn RP Configuration:', webauthnConfig);
 
         const options = await generateRegistrationOptions({
-          rpName,
-          rpID,
+          rpName: webauthnConfig.rpName,
+          rpID: webauthnConfig.rpID,
           userID: Buffer.from(username, 'utf-8'),
           userName: username,
           userDisplayName: username,
@@ -586,11 +620,12 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
           return sendJSON(res, 403, { error: 'unauthorized' });
         }
 
+        const webauthnConfig = await getWebAuthnConfig();
         const verification = await verifyRegistrationResponse({
           response: response as RegistrationResponseJSON,
           expectedChallenge: challengeRecord.challenge,
-          expectedOrigin: rpOrigin,
-          expectedRPID: rpID,
+          expectedOrigin: webauthnConfig.rpOrigin,
+          expectedRPID: webauthnConfig.rpID,
         });
 
         if (!verification.verified || !verification.registrationInfo) {
@@ -656,8 +691,9 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
 
         cleanExpiredChallenges();
 
+        const webauthnConfig = await getWebAuthnConfig();
         const options = await generateAuthenticationOptions({
-          rpID,
+          rpID: webauthnConfig.rpID,
           allowCredentials: userPasskeys.map(passkey => ({
             id: passkey.credentialID,
             transports: passkey.transports,
@@ -708,11 +744,12 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
           return sendJSON(res, 400, { error: 'credential_not_found' });
         }
 
+        const webauthnConfig = await getWebAuthnConfig();
         const verification = await verifyAuthenticationResponse({
           response: response as AuthenticationResponseJSON,
           expectedChallenge: challengeRecord.challenge,
-          expectedOrigin: rpOrigin,
-          expectedRPID: rpID,
+          expectedOrigin: webauthnConfig.rpOrigin,
+          expectedRPID: webauthnConfig.rpID,
           credential: {
             id: passkey.credentialID,
             publicKey: passkey.credentialPublicKey,
@@ -907,6 +944,43 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         const filtered = passkeys.filter(p => p.username !== username);
         await writePasskeys(filtered);
         return sendJSON(res, 200, { ok: true, deleted: passkeys.length - filtered.length });
+      }
+
+      return sendJSON(res, 405, { error: 'method_not_allowed' });
+    })();
+    return;
+  }
+
+  // WebAuthn Configuration: GET/POST /api/admin/webauthn-config
+  if (url.pathname === '/api/admin/webauthn-config') {
+    (async () => {
+      const cookies = parseCookies(req);
+      const token = cookies['bm2_auth'] || '';
+      const claims = token ? await verifyToken(token) : null;
+      if (!claims || !claims.r.includes('admin')) return sendJSON(res, 401, { error: 'unauthorized' });
+
+      if (method === 'GET') {
+        const config = await readWebAuthnConfig();
+        return sendJSON(res, 200, config);
+      }
+
+      if (method === 'POST') {
+        try {
+          const chunks: Buffer[] = [];
+          await new Promise<void>((resolve, reject) => { req.on('data', (c) => chunks.push(c as Buffer)); req.on('end', resolve); req.on('error', reject); });
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
+
+          const config = {
+            rpId: String(body.rpId || '').trim(),
+            rpOrigin: String(body.rpOrigin || '').trim(),
+            rpName: String(body.rpName || '').trim(),
+          };
+
+          await writeWebAuthnConfig(config);
+          return sendJSON(res, 200, { success: true, config });
+        } catch (err: any) {
+          return sendJSON(res, 400, { error: err.message || 'Invalid JSON' });
+        }
       }
 
       return sendJSON(res, 405, { error: 'method_not_allowed' });
