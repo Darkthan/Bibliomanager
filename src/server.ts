@@ -617,6 +617,12 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         if (!claims) return sendJSON(res, 401, { error: 'unauthorized' });
 
         const { challengeKey, name, response } = body;
+        console.log('Registration response received:', {
+          challengeKey,
+          name,
+          responseId: response?.id,
+          responseRawId: response?.rawId
+        });
         if (!challengeKey || !response) return sendJSON(res, 400, { error: 'missing_data' });
 
         const challengeRecord = challenges.get(challengeKey);
@@ -642,6 +648,10 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
         }
 
         const { registrationInfo } = verification;
+        console.log('Full registrationInfo:', JSON.stringify(registrationInfo, null, 2));
+        console.log('registrationInfo.credential:', registrationInfo.credential);
+        console.log('registrationInfo keys:', Object.keys(registrationInfo));
+
         const passkeys = await readPasskeys();
         console.log('Current passkeys before adding:', passkeys.length);
 
