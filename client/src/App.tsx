@@ -655,58 +655,6 @@ export function App() {
   }
 
   // WebAuthn/Passkey functions
-  async function loginWithPasskey(username: string) {
-    if (!browserSupportsWebAuthn()) {
-      throw new Error('WebAuthn non supporté par ce navigateur');
-    }
-
-    // Begin authentication
-    const beginRes = await fetch('/api/auth/webauthn/authenticate/begin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username }),
-    });
-    
-    if (!beginRes.ok) {
-      const error = await beginRes.json();
-      if (error.error === 'no_passkeys') {
-        throw new Error('Aucune clé d\'accès trouvée pour cet utilisateur');
-      }
-      throw new Error('Impossible d\'initier l\'authentification');
-    }
-
-    const options = await beginRes.json();
-
-    // Get authentication response from browser
-    let authResponse: AuthenticationResponseJSON;
-    try {
-      authResponse = await startAuthentication({ optionsJSON: options.options });
-    } catch (error: any) {
-      if (error.name === 'NotAllowedError') {
-        throw new Error('Authentification annulée');
-      }
-      throw new Error('Erreur lors de l\'authentification');
-    }
-
-    // Finish authentication
-    const finishRes = await fetch('/api/auth/webauthn/authenticate/finish', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        challengeKey: options.challengeKey,
-        response: authResponse,
-      }),
-    });
-
-    if (!finishRes.ok) {
-      throw new Error('Échec de l\'authentification');
-    }
-
-    // Update user state
-    const meRes = await fetch('/api/auth/me', { cache: 'no-store' });
-    const d = await meRes.json();
-    setMe({ username: d?.user?.username || null, roles: Array.isArray(d.roles) ? d.roles : ['guest'] });
-  }
 
   // Usernameless WebAuthn authentication
   async function authenticateUsernameless() {
@@ -2366,7 +2314,6 @@ export function App() {
     const [p, setP] = useState('');
     const [err, setErr] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
-    const [passkeyLoading, setPasskeyLoading] = useState(false);
     const [usernamelessLoading, setUsernamelessLoading] = useState(false);
     const supportsWebAuthn = browserSupportsWebAuthn();
 
@@ -2383,23 +2330,6 @@ export function App() {
       }
     };
 
-    const handlePasskeyLogin = async () => {
-      if (!u.trim()) {
-        setErr('Veuillez saisir un nom d\'utilisateur');
-        return;
-      }
-
-      setErr(null);
-      setPasskeyLoading(true);
-      try {
-        await loginWithPasskey(u.trim());
-        navigate('/livres/disponibles');
-      } catch (e: any) {
-        setErr(e?.message || 'Erreur d\'authentification avec la clé d\'accès');
-      } finally {
-        setPasskeyLoading(false);
-      }
-    };
 
     return (
       <form 
@@ -2421,18 +2351,18 @@ export function App() {
           <>
             <button
               type="button"
-              disabled={usernamelessLoading || loading || passkeyLoading}
+              disabled={usernamelessLoading || loading}
               onClick={handleUsernamelessLogin}
               style={{
                 padding: '16px 20px',
                 borderRadius: 8,
                 width: '100%',
                 border: '2px solid var(--accent)',
-                background: usernamelessLoading || loading || passkeyLoading ? 'var(--muted-2)' : 'var(--accent)',
+                background: usernamelessLoading || loading ? 'var(--muted-2)' : 'var(--accent)',
                 color: 'white',
                 fontSize: 16,
                 fontWeight: 600,
-                cursor: usernamelessLoading || loading || passkeyLoading ? 'not-allowed' : 'pointer',
+                cursor: usernamelessLoading || loading ? 'not-allowed' : 'pointer',
                 transition: 'all 0.2s ease',
                 display: 'flex',
                 alignItems: 'center',
@@ -2528,32 +2458,6 @@ export function App() {
           }}>
             {err}
           </div>
-        )}
-        {supportsWebAuthn && (
-          <button
-            type="button"
-            disabled={passkeyLoading || loading || usernamelessLoading || !u}
-            onClick={handlePasskeyLogin}
-            style={{
-              padding: '14px 20px',
-              borderRadius: 8,
-              width: '100%',
-              border: '1px solid var(--success)',
-              background: passkeyLoading || loading || usernamelessLoading || !u ? 'var(--muted-2)' : 'var(--success)',
-              color: 'white',
-              fontSize: 16,
-              fontWeight: 600,
-              cursor: passkeyLoading || loading || usernamelessLoading || !u ? 'not-allowed' : 'pointer',
-              transition: 'all 0.2s ease',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px'
-            }}
-          >
-            <span style={{ fontSize: '18px' }}>🔐</span>
-            {passkeyLoading ? 'Authentification...' : 'Utiliser une clé d\'accès de cet utilisateur'}
-          </button>
         )}
         <div style={{ 
           textAlign: 'center', 
