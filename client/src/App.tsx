@@ -67,6 +67,31 @@ export function App() {
   const [editingBookId, setEditingBookId] = useState<number | null>(null);
   const [loanListQuery, setLoanListQuery] = useState('');
   const [route, setRoute] = useState('/livres/disponibles');
+  // Pending sync management for offline logout
+  function savePendingSyncPayload(payload?: { books: Book[]; loans: Loan[] }) {
+    try {
+      const data = payload || { books, loans };
+      localStorage.setItem('bm2/pendingSync', JSON.stringify({ ...data, ts: Date.now() }));
+    } catch {}
+  }
+  async function tryFlushPendingSync() {
+    try {
+      const raw = localStorage.getItem('bm2/pendingSync');
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      const res = await fetch('/api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ books: data.books || [], loans: data.loans || [] }) });
+      if (res.ok) {
+        localStorage.removeItem('bm2/pendingSync');
+        const pendingLogout = localStorage.getItem('bm2/pendingLogout') === '1';
+        if (pendingLogout) {
+          try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
+          localStorage.removeItem('bm2/pendingLogout');
+          setMe({ username: null, roles: ['guest'] });
+          if (route !== '/livres/disponibles') navigate('/livres/disponibles');
+        }
+      }
+    } catch {}
+  }
   // Lightweight wrapper to group advanced settings by theme
   function SettingsBlock({ title, children }: { title: string; children: React.ReactNode }) {
     return (
@@ -704,7 +729,20 @@ export function App() {
     setMe({ username: d?.user?.username || null, roles: Array.isArray(d.roles) ? d.roles : ['guest'] });
   }
   async function logout() {
-    try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
+    // Essayer d'abord de pousser l'état au serveur
+    if (navigator.onLine) {
+      try { await syncToServer(true); } catch {}
+      try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
+      setMe({ username: null, roles: ['guest'] });
+      if (route !== '/livres/disponibles') navigate('/livres/disponibles');
+      return;
+    }
+    // Hors ligne: stocker l'état pour envoi différé et marquer une déconnexion en attente
+    savePendingSyncPayload();
+    try { localStorage.setItem('bm2/pendingLogout', '1'); } catch {}
+    // Lorsque l'appareil revient en ligne, on tentera d'envoyer, puis de déconnecter côté serveur
+    window.addEventListener('online', tryFlushPendingSync, { once: true });
+    // Déconnecter l'UI immédiatement
     setMe({ username: null, roles: ['guest'] });
     if (route !== '/livres/disponibles') navigate('/livres/disponibles');
   }
@@ -972,6 +1010,12 @@ export function App() {
     (async () => {
       try {
         if (me.username) {
+          // Si on vient de se (re)connecter, tenter de vider une sync en attente
+          if (navigator.onLine) {
+            await tryFlushPendingSync();
+          } else {
+            window.addEventListener('online', tryFlushPendingSync, { once: true });
+          }
           const r = await fetch('/api/state', { cache: 'no-store' });
           if (r.ok) {
             const d = await r.json();
@@ -1036,6 +1080,7 @@ export function App() {
 
   // Server sync function
   const syncToServer = async (immediate = false) => {
+    if (!navigator.onLine) { throw new Error('offline'); }
     if (!immediate) setSyncStatus('syncing');
     try {
       const response = await fetch('/api/state', {
@@ -1045,6 +1090,10 @@ export function App() {
       });
       if (response.ok) {
         if (!immediate) setSyncStatus('success');
+      } else if (response.status === 401) {
+        // Pas de session : on enregistre une sync en attente que l'on poussera à la reconnexion utilisateur
+        savePendingSyncPayload();
+        if (!immediate) setSyncStatus('error');
       } else {
         if (!immediate) {
           setSyncStatus('error');
@@ -1052,6 +1101,8 @@ export function App() {
         }
       }
     } catch (error) {
+      // Hors ligne: persister la sync en attente
+      savePendingSyncPayload();
       if (!immediate) {
         setSyncStatus('error');
         console.warn('Server sync failed, data saved locally only:', error);
