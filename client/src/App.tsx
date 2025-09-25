@@ -146,6 +146,9 @@ export function App() {
   // WebAuthn Configuration (admin)
   const [webauthnConfig, setWebauthnConfig] = useState({ rpId: '', rpOrigin: '', rpName: '' });
   const [webauthnConfigSaved, setWebauthnConfigSaved] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  // Advanced settings mode
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   async function probeAgent() {
     try {
       const c = await Promise.race([
@@ -3139,8 +3142,101 @@ export function App() {
 
       {route === '/parametres' && (
         <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}>
-          <h2 style={{ marginTop: 0 }}>Paramètres</h2>
-          <div style={{ display: 'grid', gap: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <h2 style={{ margin: 0 }}>Paramètres</h2>
+            <div style={{ display: 'flex', gap: 4, background: 'var(--panel)', borderRadius: 8, padding: 4 }}>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedSettings(false)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 4,
+                  border: 'none',
+                  background: !showAdvancedSettings ? 'var(--accent)' : 'transparent',
+                  color: !showAdvancedSettings ? 'white' : 'var(--text)',
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  fontWeight: 500
+                }}
+              >
+                Simple
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedSettings(true)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 4,
+                  border: 'none',
+                  background: showAdvancedSettings ? 'var(--accent)' : 'transparent',
+                  color: showAdvancedSettings ? 'white' : 'var(--text)',
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  fontWeight: 500
+                }}
+              >
+                Avancé
+              </button>
+            </div>
+          </div>
+
+          {/* PARAMÈTRES SIMPLES */}
+          {!showAdvancedSettings && (
+            <div style={{ display: 'grid', gap: 20 }}>
+              <div>
+                <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Apparence</div>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={theme === 'dark'}
+                    onChange={(e) => setTheme(e.target.checked ? 'dark' : 'light')}
+                  />
+                  Thème sombre
+                </label>
+                <div style={{ color: 'var(--muted-2)', fontSize: 13, marginTop: 6 }}>S'applique immédiatement et est enregistré localement.</div>
+              </div>
+
+              <PasskeyManagement />
+
+              {isAdmin && (
+                <div>
+                  <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Actions administrateur</div>
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/corbeille')}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: 6,
+                        border: '1px solid var(--accent)',
+                        background: 'var(--accent)',
+                        color: 'white',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      📁 Corbeille ({books.filter(b => b.deleted).length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvancedSettings(true)}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: 6,
+                        border: '1px solid var(--border)',
+                        background: 'var(--btn-secondary-bg)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      ⚙️ Paramètres avancés
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* PARAMÈTRES AVANCÉS */}
+          <div style={{ display: showAdvancedSettings ? 'grid' : 'none', gap: 20 }}>
             <div>
               <div className="panel-title" style={{ fontWeight: 700, marginBottom: 6 }}>Apparence</div>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
