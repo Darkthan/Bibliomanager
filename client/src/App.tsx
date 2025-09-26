@@ -406,6 +406,34 @@ export function App() {
     }
   }
 
+  // Recharger les données depuis le serveur
+  async function reloadData() {
+    try {
+      const r = await fetch('/api/state');
+      if (r.ok) {
+        const d = await r.json();
+        if (d && Array.isArray(d.books)) {
+          const migratedBooks: Book[] = (d.books as any[]).map((b: any) => ({
+            id: typeof b.id === 'number' ? b.id : Date.now(),
+            epc: typeof b.epc === 'string' && /^([0-9A-Fa-f]{24})$/.test(b.epc) ? String(b.epc).toUpperCase() : genEpc96(),
+            title: String(b.title || ''),
+            author: String(b.author || ''),
+            read: !!b.read,
+            createdAt: typeof b.createdAt === 'number' ? b.createdAt : Date.now(),
+            isbn: b.isbn || undefined,
+            barcode: b.barcode || undefined,
+            coverUrl: b.coverUrl || undefined,
+          }));
+          setBooks(migratedBooks);
+          if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
+          saveViewCache({ books: d.books, loans: Array.isArray(d.loans) ? d.loans : [] });
+        }
+      }
+    } catch (e) {
+      console.error('Erreur lors du rechargement des données:', e);
+    }
+  }
+
   // Marquer les livres comme ayant eu leur étiquette imprimée
   async function markBooksAsPrinted(bookIds: number[]) {
     try {
@@ -419,7 +447,7 @@ export function App() {
       }
       const result = await response.json();
       // Recharger les données pour mettre à jour l'état
-      await refreshData();
+      await reloadData();
       return result;
     } catch (e: any) {
       console.error('Erreur markBooksAsPrinted:', e);
