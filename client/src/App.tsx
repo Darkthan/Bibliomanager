@@ -22,6 +22,8 @@ type Book = {
   coverUrl?: string;
   deleted?: boolean;
   deletedAt?: number;
+  labelPrinted?: boolean;
+  labelPrintedAt?: number;
 };
 
 type Loan = {
@@ -421,8 +423,8 @@ export function App() {
             isbn: b.isbn || undefined,
             barcode: b.barcode || undefined,
             coverUrl: b.coverUrl || undefined,
-            ...(b.labelPrinted && { labelPrinted: b.labelPrinted }),
-            ...(b.labelPrintedAt && { labelPrintedAt: b.labelPrintedAt }),
+            ...(b.labelPrinted !== undefined && { labelPrinted: b.labelPrinted }),
+            ...(b.labelPrintedAt !== undefined && { labelPrintedAt: b.labelPrintedAt }),
           }));
           setBooks(migratedBooks);
           if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
@@ -1006,8 +1008,8 @@ export function App() {
               isbn: b.isbn || undefined,
               barcode: b.barcode || undefined,
               coverUrl: b.coverUrl || undefined,
-              ...(b.labelPrinted && { labelPrinted: b.labelPrinted }),
-              ...(b.labelPrintedAt && { labelPrintedAt: b.labelPrintedAt }),
+              ...(b.labelPrinted !== undefined && { labelPrinted: b.labelPrinted }),
+              ...(b.labelPrintedAt !== undefined && { labelPrintedAt: b.labelPrintedAt }),
             }));
             setBooks(migratedBooks);
             if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
@@ -1031,8 +1033,8 @@ export function App() {
                   isbn: b.isbn || undefined,
                   barcode: b.barcode || undefined,
                   coverUrl: b.coverUrl || undefined,
-                  ...(b.labelPrinted && { labelPrinted: b.labelPrinted }),
-                  ...(b.labelPrintedAt && { labelPrintedAt: b.labelPrintedAt }),
+                  ...(b.labelPrinted !== undefined && { labelPrinted: b.labelPrinted }),
+                  ...(b.labelPrintedAt !== undefined && { labelPrintedAt: b.labelPrintedAt }),
                 }));
                 setBooks(migratedBooks);
                 if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
@@ -1319,8 +1321,8 @@ export function App() {
         statusFilter === 'all' ? true :
         statusFilter === 'read' ? b.read :
         statusFilter === 'unread' ? !b.read :
-        statusFilter === 'unprinted' ? !(b as any).labelPrinted :
-        statusFilter === 'printed' ? !!(b as any).labelPrinted :
+        statusFilter === 'unprinted' ? !b.labelPrinted :
+        statusFilter === 'printed' ? !!b.labelPrinted :
         true;
       const notDeleted = !b.deleted;
       return matchesQuery && matchesStatus && notDeleted;
@@ -4212,7 +4214,7 @@ export function App() {
                     ) : (
                       <>
                         <span style={{ textDecoration: b.read ? 'line-through' : 'none' }}>{b.title}</span>
-                        {!(b as any).labelPrinted && (
+                        {!b.labelPrinted && (
                           <span
                             title="Étiquette à imprimer"
                             style={{

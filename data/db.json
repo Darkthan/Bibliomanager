@@ -9,7 +9,9 @@
       "createdAt": 1758554158209,
       "isbn": "9782401078468",
       "barcode": "9782401078468",
-      "coverUrl": "/covers/isbn/9782401078468?s=M"
+      "coverUrl": "/covers/isbn/9782401078468?s=M",
+      "labelPrinted": true,
+      "labelPrintedAt": 1758554158209
     },
     {
       "id": 1758266264951,
