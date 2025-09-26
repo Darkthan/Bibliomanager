@@ -4212,19 +4212,19 @@ export function App() {
                     ) : (
                       <>
                         <span style={{ textDecoration: b.read ? 'line-through' : 'none' }}>{b.title}</span>
-                        {(b as any).labelPrinted && (
+                        {!(b as any).labelPrinted && (
                           <span
-                            title="Étiquette déjà imprimée"
+                            title="Étiquette à imprimer"
                             style={{
                               fontSize: '12px',
-                              background: 'var(--success-weak)',
-                              color: 'var(--success)',
+                              background: 'var(--warn-bg)',
+                              color: 'var(--warn-text)',
                               padding: '2px 6px',
                               borderRadius: '12px',
                               fontWeight: 500
                             }}
                           >
-                            🏷️ Imprimée
+                            🏷️ À imprimer
                           </span>
                         )}
                       </>
