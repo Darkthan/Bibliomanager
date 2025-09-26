@@ -301,6 +301,9 @@ export function App() {
   }
   // Online state and edit permission
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  // Filtre pour les livres sans étiquettes imprimées
+  const [showOnlyUnprinted, setShowOnlyUnprinted] = useState(false);
   useEffect(() => {
     const update = () => setIsOnline(typeof navigator !== 'undefined' ? navigator.onLine : true);
     window.addEventListener('online', update);
@@ -394,9 +397,33 @@ export function App() {
       let r = await fetch('http://localhost:9110/print', payload);
       if (!r.ok) { r = await fetch('http://127.0.0.1:9110/print', payload); }
       if (!r.ok) throw new Error('Agent répond en erreur');
+
+      // Marquer le livre comme imprimé après impression réussie
+      await markBooksAsPrinted([b.id]);
       alert("Étiquette envoyée à l'agent local.");
     } catch (e: any) {
       alert('Erreur agent local: ' + (e?.message || 'inconnue'));
+    }
+  }
+
+  // Marquer les livres comme ayant eu leur étiquette imprimée
+  async function markBooksAsPrinted(bookIds: number[]) {
+    try {
+      const response = await fetch('/api/books/mark-printed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookIds })
+      });
+      if (!response.ok) {
+        throw new Error('Erreur lors du marquage des livres');
+      }
+      const result = await response.json();
+      // Recharger les données pour mettre à jour l'état
+      await refreshData();
+      return result;
+    } catch (e: any) {
+      console.error('Erreur markBooksAsPrinted:', e);
+      throw e;
     }
   }
 
@@ -410,6 +437,9 @@ export function App() {
       let r = await fetch('http://localhost:9110/print', payload);
       if (!r.ok) { r = await fetch('http://127.0.0.1:9110/print', payload); }
       if (!r.ok) throw new Error('Agent répond en erreur');
+
+      // Marquer les livres comme imprimés après impression réussie
+      await markBooksAsPrinted(ids);
       alert(items.length + (items.length > 1 ? ' étiquettes envoyées à l\'agent local.' : ' étiquette envoyée à l\'agent local.'));
     } catch (e: any) {
       alert('Erreur agent local: ' + (e?.message || 'inconnue'));
@@ -1256,7 +1286,8 @@ export function App() {
       const matchesStatus =
         statusFilter === 'all' ? true : statusFilter === 'read' ? b.read : !b.read;
       const notDeleted = !b.deleted;
-      return matchesQuery && matchesStatus && notDeleted;
+      const matchesPrintFilter = !showOnlyUnprinted || !(b as any).labelPrinted;
+      return matchesQuery && matchesStatus && notDeleted && matchesPrintFilter;
     });
     list = list.sort((a, b) => {
       if (sortBy === 'recent' || sortBy === 'addedDesc') return b.createdAt - a.createdAt;
@@ -1265,7 +1296,7 @@ export function App() {
       return a.author.localeCompare(b.author);
     });
     return list;
-  }, [books, query, statusFilter, sortBy]);
+  }, [books, query, statusFilter, sortBy, showOnlyUnprinted]);
 
   const bookSuggestions = useMemo(() => {
     const raw = loanBookQuery.trim();
@@ -3089,6 +3120,9 @@ export function App() {
     try {
       const r = await fetch('/api/print/zpl', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ host: printerHost, port: printerPort, zpl }) });
       if (!r.ok) throw new Error('Envoi ZPL échoué');
+
+      // Marquer les livres comme imprimés après impression réussie
+      await markBooksAsPrinted(ids);
       alert(items.length + (items.length > 1 ? " étiquettes envoyées à l'imprimante." : " étiquette envoyée à l'imprimante."));
     } catch (e: any) { alert('Erreur impression ZPL: ' + (e?.message || 'inconnue')); }
   }
@@ -4027,6 +4061,15 @@ export function App() {
             <option value="title">Titre (A→Z)</option>
             <option value="author">Auteur (A→Z)</option>
           </select>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={showOnlyUnprinted}
+              onChange={(e) => setShowOnlyUnprinted(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: 14, userSelect: 'none' }}>Seulement les livres sans étiquettes</span>
+          </label>
           <div className="bulk-print-bar" style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <button type="button" onClick={() => setSelectedForPrint(new Set(visibleBooks.map((b) => b.id)))} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Tout sélectionner</button>
             <button type="button" onClick={() => setSelectedForPrint(new Set())} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Effacer sélection</button>
@@ -4138,7 +4181,24 @@ export function App() {
                         style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', flex: 1, minWidth: 180 }}
                       />
                     ) : (
-                      <span style={{ textDecoration: b.read ? 'line-through' : 'none' }}>{b.title}</span>
+                      <>
+                        <span style={{ textDecoration: b.read ? 'line-through' : 'none' }}>{b.title}</span>
+                        {(b as any).labelPrinted && (
+                          <span
+                            title="Étiquette déjà imprimée"
+                            style={{
+                              fontSize: '12px',
+                              background: 'var(--success-weak)',
+                              color: 'var(--success)',
+                              padding: '2px 6px',
+                              borderRadius: '12px',
+                              fontWeight: 500
+                            }}
+                          >
+                            🏷️ Imprimée
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                   <div style={{ color: 'var(--muted)', fontSize: 14 }}>

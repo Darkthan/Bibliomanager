@@ -511,6 +511,51 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  // Mark books as label printed: POST /api/books/mark-printed
+  if (method === 'POST' && url.pathname === '/api/books/mark-printed') {
+    (async () => {
+      try {
+        // Require authenticated role (admin/import/loans) or valid API key
+        const cookies = parseCookies(req);
+        const token = cookies['bm2_auth'] || '';
+        const claims = token ? await verifyToken(token) : null;
+        const apiValid = await isApiKeyValid(apiKeyFromReq);
+        const ok = apiValid || hasRequiredRole(claims?.r, ['import', 'loans']);
+        if (!ok) return sendJSON(res, 401, { error: 'unauthorized' });
+
+        const chunks: Buffer[] = [];
+        await new Promise<void>((resolve, reject) => {
+          req.on('data', (c) => chunks.push(c as Buffer));
+          req.on('end', resolve);
+          req.on('error', reject);
+        });
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
+        const bookIds = Array.isArray(body.bookIds) ? body.bookIds : [];
+
+        if (bookIds.length === 0) {
+          return sendJSON(res, 400, { error: 'no_book_ids' });
+        }
+
+        const state = await readState();
+        let updated = 0;
+
+        state.books = state.books.map(book => {
+          if (bookIds.includes(book.id)) {
+            updated++;
+            return { ...book, labelPrinted: true, labelPrintedAt: Date.now() };
+          }
+          return book;
+        });
+
+        await writeState(state);
+        return sendJSON(res, 200, { ok: true, updated });
+      } catch (e: any) {
+        return sendJSON(res, 400, { error: 'mark_printed_failed', message: e?.message || String(e) });
+      }
+    })();
+    return;
+  }
+
   // --- Auth endpoints ---
   if (url.pathname === '/api/auth/me') {
     (async () => {
