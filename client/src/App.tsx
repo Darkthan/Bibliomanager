@@ -50,7 +50,7 @@ export function App() {
   const [isbn, setIsbn] = useState('');
   const [barcode, setBarcode] = useState('');
   const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'read' | 'unread'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'read' | 'unread' | 'unprinted' | 'printed'>('all');
   const [sortBy, setSortBy] = useState<'recent' | 'title' | 'author' | 'addedAsc' | 'addedDesc'>('recent');
   const [loans, setLoans] = useState<Loan[]>([]);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
@@ -302,8 +302,6 @@ export function App() {
   // Online state and edit permission
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
-  // Filtre pour les livres sans étiquettes imprimées
-  const [showOnlyUnprinted, setShowOnlyUnprinted] = useState(false);
   useEffect(() => {
     const update = () => setIsOnline(typeof navigator !== 'undefined' ? navigator.onLine : true);
     window.addEventListener('online', update);
@@ -1312,10 +1310,14 @@ export function App() {
     let list = books.filter((b) => {
       const matchesQuery = q === '' || b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q);
       const matchesStatus =
-        statusFilter === 'all' ? true : statusFilter === 'read' ? b.read : !b.read;
+        statusFilter === 'all' ? true :
+        statusFilter === 'read' ? b.read :
+        statusFilter === 'unread' ? !b.read :
+        statusFilter === 'unprinted' ? !(b as any).labelPrinted :
+        statusFilter === 'printed' ? !!(b as any).labelPrinted :
+        true;
       const notDeleted = !b.deleted;
-      const matchesPrintFilter = !showOnlyUnprinted || !(b as any).labelPrinted;
-      return matchesQuery && matchesStatus && notDeleted && matchesPrintFilter;
+      return matchesQuery && matchesStatus && notDeleted;
     });
     list = list.sort((a, b) => {
       if (sortBy === 'recent' || sortBy === 'addedDesc') return b.createdAt - a.createdAt;
@@ -1324,7 +1326,7 @@ export function App() {
       return a.author.localeCompare(b.author);
     });
     return list;
-  }, [books, query, statusFilter, sortBy, showOnlyUnprinted]);
+  }, [books, query, statusFilter, sortBy]);
 
   const bookSuggestions = useMemo(() => {
     const raw = loanBookQuery.trim();
@@ -4077,6 +4079,8 @@ export function App() {
             <option value="all">Tous</option>
             <option value="read">Lus</option>
             <option value="unread">À lire</option>
+            <option value="unprinted">Sans étiquettes</option>
+            <option value="printed">Avec étiquettes</option>
           </select>
           <select
             aria-label="Trier par"
@@ -4089,15 +4093,6 @@ export function App() {
             <option value="title">Titre (A→Z)</option>
             <option value="author">Auteur (A→Z)</option>
           </select>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={showOnlyUnprinted}
-              onChange={(e) => setShowOnlyUnprinted(e.target.checked)}
-              style={{ cursor: 'pointer' }}
-            />
-            <span style={{ fontSize: 14, userSelect: 'none' }}>Seulement les livres sans étiquettes</span>
-          </label>
           <div className="bulk-print-bar" style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <button type="button" onClick={() => setSelectedForPrint(new Set(visibleBooks.map((b) => b.id)))} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Tout sélectionner</button>
             <button type="button" onClick={() => setSelectedForPrint(new Set())} style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Effacer sélection</button>
