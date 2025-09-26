@@ -421,6 +421,8 @@ export function App() {
             isbn: b.isbn || undefined,
             barcode: b.barcode || undefined,
             coverUrl: b.coverUrl || undefined,
+            ...(b.labelPrinted && { labelPrinted: b.labelPrinted }),
+            ...(b.labelPrintedAt && { labelPrintedAt: b.labelPrintedAt }),
           }));
           setBooks(migratedBooks);
           if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
@@ -1004,6 +1006,8 @@ export function App() {
               isbn: b.isbn || undefined,
               barcode: b.barcode || undefined,
               coverUrl: b.coverUrl || undefined,
+              ...(b.labelPrinted && { labelPrinted: b.labelPrinted }),
+              ...(b.labelPrintedAt && { labelPrintedAt: b.labelPrintedAt }),
             }));
             setBooks(migratedBooks);
             if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
@@ -1027,6 +1031,8 @@ export function App() {
                   isbn: b.isbn || undefined,
                   barcode: b.barcode || undefined,
                   coverUrl: b.coverUrl || undefined,
+                  ...(b.labelPrinted && { labelPrinted: b.labelPrinted }),
+                  ...(b.labelPrintedAt && { labelPrintedAt: b.labelPrintedAt }),
                 }));
                 setBooks(migratedBooks);
                 if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
