@@ -15,7 +15,8 @@
       "Bash(npm run build:server:*)",
       "Bash(cat:*)",
       "Bash(netstat:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

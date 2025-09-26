@@ -1064,6 +1064,8 @@ export function App() {
               isbn: b.isbn || undefined,
               barcode: b.barcode || undefined,
               coverUrl: b.coverUrl || undefined,
+              ...(b.labelPrinted !== undefined && { labelPrinted: b.labelPrinted }),
+              ...(b.labelPrintedAt !== undefined && { labelPrintedAt: b.labelPrintedAt }),
             }));
             setBooks(migrated);
             setLoans(Array.isArray(loansArr) ? loansArr : []);
@@ -1108,6 +1110,8 @@ export function App() {
                 isbn: b.isbn || undefined,
                 barcode: b.barcode || undefined,
                 coverUrl: b.coverUrl || undefined,
+                ...(b.labelPrinted !== undefined && { labelPrinted: b.labelPrinted }),
+                ...(b.labelPrintedAt !== undefined && { labelPrintedAt: b.labelPrintedAt }),
               })));
               if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
               saveViewCache({ books: d.books, loans: Array.isArray(d.loans) ? d.loans : [] });
@@ -1129,6 +1133,8 @@ export function App() {
                 isbn: b.isbn || undefined,
                 barcode: b.barcode || undefined,
                 coverUrl: b.coverUrl || undefined,
+                ...(b.labelPrinted !== undefined && { labelPrinted: b.labelPrinted }),
+                ...(b.labelPrintedAt !== undefined && { labelPrintedAt: b.labelPrintedAt }),
               })));
               if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
               saveViewCache({ books: d.books, loans: Array.isArray(d.loans) ? d.loans : [] });
