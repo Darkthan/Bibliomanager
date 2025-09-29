@@ -4486,22 +4486,6 @@ export function App() {
                       <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{group.title}</div>
                       <div style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 8 }}>{group.author}</div>
 
-                      {/* Compteur de disponibilité */}
-                      {group.totalCopies > 1 && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                          <span style={{
-                            padding: '4px 8px',
-                            borderRadius: 12,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            background: group.availableCopies > 0 ? 'var(--success-weak)' : 'var(--warn-bg)',
-                            color: group.availableCopies > 0 ? 'var(--success)' : 'var(--warn-text)',
-                            border: `1px solid ${group.availableCopies > 0 ? 'var(--success)' : 'var(--warn-border)'}`
-                          }}>
-                            {group.availableCopies} / {group.totalCopies} disponible{group.totalCopies > 1 ? 's' : ''}
-                          </span>
-                        </div>
-                      )}
 
                       {/* ISBN */}
                       {group.isbn !== 'sans-isbn' && (
@@ -4531,15 +4515,6 @@ export function App() {
                       >
                         Voir détails
                       </button>
-                      {group.totalCopies > 1 && (
-                        <div style={{
-                          fontSize: 11,
-                          color: 'var(--muted-2)',
-                          textAlign: 'center'
-                        }}>
-                          {group.totalCopies} exemplaire{group.totalCopies > 1 ? 's' : ''}
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
