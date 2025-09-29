@@ -4487,32 +4487,21 @@ export function App() {
                       <div style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 8 }}>{group.author}</div>
 
                       {/* Compteur de disponibilité */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                        <span style={{
-                          padding: '4px 8px',
-                          borderRadius: 12,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          background: group.availableCopies > 0 ? 'var(--success-weak)' : 'var(--warn-bg)',
-                          color: group.availableCopies > 0 ? 'var(--success)' : 'var(--warn-text)',
-                          border: `1px solid ${group.availableCopies > 0 ? 'var(--success)' : 'var(--warn-border)'}`
-                        }}>
-                          {group.availableCopies} / {group.totalCopies} disponible{group.totalCopies > 1 ? 's' : ''}
-                        </span>
-                        {group.hasUnprinted && (
+                      {group.totalCopies > 1 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                           <span style={{
                             padding: '4px 8px',
                             borderRadius: 12,
                             fontSize: 12,
                             fontWeight: 600,
-                            background: 'var(--warn-bg)',
-                            color: 'var(--warn-text)',
-                            border: '1px solid var(--warn-border)'
+                            background: group.availableCopies > 0 ? 'var(--success-weak)' : 'var(--warn-bg)',
+                            color: group.availableCopies > 0 ? 'var(--success)' : 'var(--warn-text)',
+                            border: `1px solid ${group.availableCopies > 0 ? 'var(--success)' : 'var(--warn-border)'}`
                           }}>
-                            🏷️ À imprimer
+                            {group.availableCopies} / {group.totalCopies} disponible{group.totalCopies > 1 ? 's' : ''}
                           </span>
-                        )}
-                      </div>
+                        </div>
+                      )}
 
                       {/* ISBN */}
                       {group.isbn !== 'sans-isbn' && (
