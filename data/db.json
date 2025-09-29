@@ -32,6 +32,30 @@
       "createdAt": 1758196787688,
       "isbn": "9781781101315",
       "coverUrl": "/covers/isbn/9781781101315?s=M"
+    },
+    {
+      "id": 1758554200000,
+      "epc": "B2B09DDDF3497396B6C97E4F",
+      "title": "Les Misérables",
+      "author": "Victor Hugo",
+      "read": false,
+      "createdAt": 1758554200000,
+      "isbn": "9782401078468",
+      "barcode": "9782401078468",
+      "coverUrl": "/covers/isbn/9782401078468?s=M"
+    },
+    {
+      "id": 1758554300000,
+      "epc": "C3C1AEEED4598407C7DA8F50",
+      "title": "Les Misérables",
+      "author": "Victor Hugo",
+      "read": false,
+      "createdAt": 1758554300000,
+      "isbn": "9782401078468",
+      "barcode": "9782401078468",
+      "coverUrl": "/covers/isbn/9782401078468?s=M",
+      "labelPrinted": true,
+      "labelPrintedAt": 1758554300000
     }
   ],
   "loans": [

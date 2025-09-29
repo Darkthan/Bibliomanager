@@ -35,6 +35,17 @@ type Loan = {
   returnedAt?: string; // YYYY-MM-DD
 };
 
+type BookGroup = {
+  isbn: string;
+  title: string;
+  author: string;
+  coverUrl?: string;
+  totalCopies: number;
+  availableCopies: number;
+  copies: Book[];
+  hasUnprinted: boolean;
+};
+
 export function App() {
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
   // Auth (roles cumulables)
@@ -3035,27 +3046,85 @@ export function App() {
     );
   }
 
-  const availableBooks = useMemo(() => {
+  // Groupement des livres par ISBN avec comptage de disponibilité
+  const bookGroups = useMemo(() => {
     const activeIds = new Set(loans.filter((l) => !loanUtils.isReturned(l)).map((l) => l.bookId));
     const q = query.trim().toLowerCase();
-    let list = books.filter((b) => !activeIds.has(b.id));
+
+    // Filtrer les livres non supprimés
+    const validBooks = books.filter((b) => !b.deleted);
+
+    // Grouper par ISBN
+    const groupsByIsbn = new Map<string, BookGroup>();
+
+    for (const book of validBooks) {
+      const isbn = book.isbn || 'sans-isbn';
+
+      if (!groupsByIsbn.has(isbn)) {
+        groupsByIsbn.set(isbn, {
+          isbn,
+          title: book.title,
+          author: book.author,
+          coverUrl: book.coverUrl,
+          totalCopies: 0,
+          availableCopies: 0,
+          copies: [],
+          hasUnprinted: false
+        });
+      }
+
+      const group = groupsByIsbn.get(isbn)!;
+      group.copies.push(book);
+      group.totalCopies++;
+
+      if (!activeIds.has(book.id)) {
+        group.availableCopies++;
+      }
+
+      if (!book.labelPrinted) {
+        group.hasUnprinted = true;
+      }
+    }
+
+    // Convertir en array et appliquer les filtres
+    let groupList = Array.from(groupsByIsbn.values());
+
     if (q) {
-      list = list.filter((b) =>
-        b.title.toLowerCase().includes(q) ||
-        b.author.toLowerCase().includes(q) ||
-        (b.isbn || '').toLowerCase().includes(q) ||
-        (b.barcode || '').toLowerCase().includes(q) ||
-        shortIdFromEpc(b.epc).toLowerCase().includes(q)
+      groupList = groupList.filter((group) =>
+        group.title.toLowerCase().includes(q) ||
+        group.author.toLowerCase().includes(q) ||
+        group.isbn.toLowerCase().includes(q) ||
+        group.copies.some(b =>
+          (b.barcode || '').toLowerCase().includes(q) ||
+          shortIdFromEpc(b.epc).toLowerCase().includes(q)
+        )
       );
     }
-    list = list.sort((a, b) => {
-      if (sortBy === 'recent' || sortBy === 'addedDesc') return b.createdAt - a.createdAt;
-      if (sortBy === 'addedAsc') return a.createdAt - b.createdAt;
+
+    // Trier les groupes
+    groupList = groupList.sort((a, b) => {
+      if (sortBy === 'recent' || sortBy === 'addedDesc') {
+        const aLatest = Math.max(...a.copies.map(c => c.createdAt));
+        const bLatest = Math.max(...b.copies.map(c => c.createdAt));
+        return bLatest - aLatest;
+      }
+      if (sortBy === 'addedAsc') {
+        const aEarliest = Math.min(...a.copies.map(c => c.createdAt));
+        const bEarliest = Math.min(...b.copies.map(c => c.createdAt));
+        return aEarliest - bEarliest;
+      }
       if (sortBy === 'title') return a.title.localeCompare(b.title);
       return a.author.localeCompare(b.author);
     });
-    return list;
+
+    return groupList;
   }, [books, loans, query, sortBy]);
+
+  // Compatibilité : liste simple des livres disponibles pour les autres fonctions
+  const availableBooks = useMemo(() => {
+    const activeIds = new Set(loans.filter((l) => !loanUtils.isReturned(l)).map((l) => l.bookId));
+    return books.filter((b) => !activeIds.has(b.id) && !b.deleted);
+  }, [books, loans]);
 
   function addImportFromInput() {
     const lines = importInput.split(/\s|,|;|\n|\r/g).map((s) => s.trim()).filter(Boolean);
@@ -4364,7 +4433,7 @@ export function App() {
 
       {route === '/livres/disponibles' && (
       <section style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8, position: 'relative' }}>
-        <h2 style={{ marginTop: 0 }}>Livres disponibles ({availableBooks.length})</h2>
+        <h2 style={{ marginTop: 0 }}>Livres disponibles ({bookGroups.reduce((total, group) => total + group.availableCopies, 0)} exemplaires de {bookGroups.length} titres)</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
           <input
             aria-label="Rechercher"
@@ -4388,108 +4457,263 @@ export function App() {
             <option value="author">Auteur (A→Z)</option>
           </select>
         </div>
-        {availableBooks.length === 0 ? (
+        {bookGroups.length === 0 ? (
           <p>Aucun livre disponible pour le moment.</p>
         ) : (
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
-            {availableBooks.map((b) => (
-              <li key={b.id}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedAvailableBook(b)}
-                  aria-label={`Voir détails de ${b.title}`}
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+            {bookGroups.map((group) => (
+              <li key={group.isbn}>
+                <div
                   style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    cursor: 'pointer',
                     border: '1px solid var(--border)',
                     background: 'var(--panel)',
                     borderRadius: 12,
-                    padding: 12,
-                    display: 'grid',
-                    gridTemplateColumns: '48px 1fr',
-                    gap: 12,
+                    padding: 16,
                   }}
                 >
-                  {b.coverUrl ? (
-                    <img src={b.coverUrl} alt="" width={48} height={72} style={{ objectFit: 'cover', borderRadius: 6 }} />
-                  ) : b.isbn ? (
-                    <img src={`/covers/isbn/${b.isbn}?s=S`} alt="" width={48} height={72} style={{ objectFit: 'cover', borderRadius: 6 }} />
-                  ) : (
-                    <div style={{ width: 48, height: 72, background: 'var(--card-placeholder)', borderRadius: 6 }} />
-                  )}
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.title}</div>
-                    <div style={{ color: 'var(--muted)', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.author}</div>
-                    {(b.isbn || b.barcode) && (
-                      <div style={{ color: 'var(--muted-2)', fontSize: 12, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {b.isbn && <span>ISBN {b.isbn}</span>}
-                        {b.isbn && b.barcode && <span> · </span>}
-                        {b.barcode && <span>CB {b.barcode}</span>}
-                      </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr auto', gap: 12, alignItems: 'start' }}>
+                    {/* Couverture */}
+                    {group.coverUrl ? (
+                      <img src={group.coverUrl} alt="" width={60} height={90} style={{ objectFit: 'cover', borderRadius: 6 }} />
+                    ) : group.isbn !== 'sans-isbn' ? (
+                      <img src={`/covers/isbn/${group.isbn}?s=S`} alt="" width={60} height={90} style={{ objectFit: 'cover', borderRadius: 6 }} />
+                    ) : (
+                      <div style={{ width: 60, height: 90, background: 'var(--card-placeholder)', borderRadius: 6 }} />
                     )}
+
+                    {/* Informations du livre */}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{group.title}</div>
+                      <div style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 8 }}>{group.author}</div>
+
+                      {/* Compteur de disponibilité */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        <span style={{
+                          padding: '4px 8px',
+                          borderRadius: 12,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          background: group.availableCopies > 0 ? 'var(--success-weak)' : 'var(--warn-bg)',
+                          color: group.availableCopies > 0 ? 'var(--success)' : 'var(--warn-text)',
+                          border: `1px solid ${group.availableCopies > 0 ? 'var(--success)' : 'var(--warn-border)'}`
+                        }}>
+                          {group.availableCopies} / {group.totalCopies} disponible{group.totalCopies > 1 ? 's' : ''}
+                        </span>
+                        {group.hasUnprinted && (
+                          <span style={{
+                            padding: '4px 8px',
+                            borderRadius: 12,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            background: 'var(--warn-bg)',
+                            color: 'var(--warn-text)',
+                            border: '1px solid var(--warn-border)'
+                          }}>
+                            🏷️ À imprimer
+                          </span>
+                        )}
+                      </div>
+
+                      {/* ISBN */}
+                      {group.isbn !== 'sans-isbn' && (
+                        <div style={{ color: 'var(--muted-2)', fontSize: 12 }}>
+                          ISBN {group.isbn}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Bouton d'action */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedAvailableBook(group.copies[0])}
+                        aria-label={`Voir détails de ${group.title}`}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: 8,
+                          border: '1px solid var(--accent)',
+                          background: 'var(--accent)',
+                          color: 'white',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        Voir détails
+                      </button>
+                      {group.totalCopies > 1 && (
+                        <div style={{
+                          fontSize: 11,
+                          color: 'var(--muted-2)',
+                          textAlign: 'center'
+                        }}>
+                          {group.totalCopies} exemplaire{group.totalCopies > 1 ? 's' : ''}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </button>
+                </div>
               </li>
             ))}
           </ul>
         )}
 
-        {selectedAvailableBook && (
-          <div
-            role="dialog"
-            aria-modal="true"
-            onClick={() => setSelectedAvailableBook(null)}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0,0,0,0.4)',
-              display: 'grid',
-              placeItems: 'center',
-              padding: 16,
-            }}
-          >
+        {selectedAvailableBook && (() => {
+          const activeIds = new Set(loans.filter((l) => !loanUtils.isReturned(l)).map((l) => l.bookId));
+          const bookGroup = bookGroups.find(group =>
+            group.copies.some(copy => copy.id === selectedAvailableBook.id)
+          );
+
+          return (
             <div
-              onClick={(e) => e.stopPropagation()}
-              style={{ background: 'var(--panel)', borderRadius: 12, padding: 16, width: 'min(560px, 92vw)', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}
+              role="dialog"
+              aria-modal="true"
+              onClick={() => setSelectedAvailableBook(null)}
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.4)',
+                display: 'grid',
+                placeItems: 'center',
+                padding: 16,
+              }}
             >
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-                {selectedAvailableBook.coverUrl ? (
-                  <img src={selectedAvailableBook.coverUrl} alt="" width={96} height={144} style={{ objectFit: 'cover', borderRadius: 8 }} />
-                ) : selectedAvailableBook.isbn ? (
-                  <img src={`/covers/isbn/${selectedAvailableBook.isbn}?s=M`} alt="" width={96} height={144} style={{ objectFit: 'cover', borderRadius: 8 }} />
-                ) : (
-                  <div style={{ width: 96, height: 144, background: 'var(--card-placeholder)', borderRadius: 8 }} />
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{ background: 'var(--panel)', borderRadius: 12, padding: 20, width: 'min(680px, 95vw)', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', maxHeight: '90vh', overflow: 'auto' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 20 }}>
+                  {selectedAvailableBook.coverUrl ? (
+                    <img src={selectedAvailableBook.coverUrl} alt="" width={96} height={144} style={{ objectFit: 'cover', borderRadius: 8 }} />
+                  ) : selectedAvailableBook.isbn ? (
+                    <img src={`/covers/isbn/${selectedAvailableBook.isbn}?s=M`} alt="" width={96} height={144} style={{ objectFit: 'cover', borderRadius: 8 }} />
+                  ) : (
+                    <div style={{ width: 96, height: 144, background: 'var(--card-placeholder)', borderRadius: 8 }} />
+                  )}
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <h3 style={{ margin: '4px 0 6px 0' }}>{selectedAvailableBook.title}</h3>
+                    <div style={{ color: 'var(--muted)', marginBottom: 12 }}>par {selectedAvailableBook.author}</div>
+                    <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: '120px 1fr', rowGap: 8 }}>
+                      {selectedAvailableBook.isbn && (
+                        <>
+                          <dt style={{ color: 'var(--muted-2)' }}>ISBN</dt>
+                          <dd style={{ margin: 0 }}>{selectedAvailableBook.isbn}</dd>
+                        </>
+                      )}
+                      <dt style={{ color: 'var(--muted-2)' }}>Exemplaires</dt>
+                      <dd style={{ margin: 0 }}>
+                        <span style={{
+                          padding: '4px 8px',
+                          borderRadius: 12,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          background: bookGroup && bookGroup.availableCopies > 0 ? 'var(--success-weak)' : 'var(--warn-bg)',
+                          color: bookGroup && bookGroup.availableCopies > 0 ? 'var(--success)' : 'var(--warn-text)',
+                          border: `1px solid ${bookGroup && bookGroup.availableCopies > 0 ? 'var(--success)' : 'var(--warn-border)'}`
+                        }}>
+                          {bookGroup ? bookGroup.availableCopies : 0} / {bookGroup ? bookGroup.totalCopies : 1} disponible{bookGroup && bookGroup.totalCopies > 1 ? 's' : ''}
+                        </span>
+                      </dd>
+                    </dl>
+                  </div>
+                </div>
+
+                {/* Liste des exemplaires */}
+                {bookGroup && bookGroup.totalCopies > 1 && (
+                  <div style={{ marginBottom: 20 }}>
+                    <h4 style={{ margin: '0 0 12px 0', fontSize: 16, color: 'var(--text)' }}>Tous les exemplaires</h4>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {bookGroup.copies.map((copy) => {
+                        const isLoaned = activeIds.has(copy.id);
+                        const loan = loans.find(l => l.bookId === copy.id && !loanUtils.isReturned(l));
+
+                        return (
+                          <div
+                            key={copy.id}
+                            style={{
+                              padding: 12,
+                              border: '1px solid var(--border)',
+                              borderRadius: 8,
+                              background: isLoaned ? 'var(--warn-bg)' : 'var(--success-weak)',
+                              display: 'grid',
+                              gridTemplateColumns: '1fr auto auto',
+                              gap: 12,
+                              alignItems: 'center'
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: 14 }}>
+                                ID: {shortIdFromEpc(copy.epc)}
+                                {!copy.labelPrinted && (
+                                  <span style={{
+                                    marginLeft: 8,
+                                    padding: '2px 6px',
+                                    borderRadius: 8,
+                                    fontSize: 10,
+                                    background: 'var(--warn-bg)',
+                                    color: 'var(--warn-text)',
+                                    border: '1px solid var(--warn-border)'
+                                  }}>
+                                    🏷️ À imprimer
+                                  </span>
+                                )}
+                              </div>
+                              {copy.barcode && (
+                                <div style={{ fontSize: 12, color: 'var(--muted-2)' }}>CB: {copy.barcode}</div>
+                              )}
+                              <div style={{ fontSize: 12, color: 'var(--muted-2)' }}>
+                                Ajouté le {new Date(copy.createdAt).toLocaleDateString()}
+                              </div>
+                            </div>
+
+                            <div>
+                              {isLoaned && loan ? (
+                                <div style={{ textAlign: 'right' }}>
+                                  <div style={{
+                                    padding: '4px 8px',
+                                    borderRadius: 8,
+                                    fontSize: 12,
+                                    background: 'var(--warn-bg)',
+                                    color: 'var(--warn-text)',
+                                    border: '1px solid var(--warn-border)'
+                                  }}>
+                                    Emprunté
+                                  </div>
+                                  <div style={{ fontSize: 11, color: 'var(--muted-2)', marginTop: 2 }}>
+                                    par {loan.borrower}
+                                  </div>
+                                  <div style={{ fontSize: 11, color: 'var(--muted-2)' }}>
+                                    jusqu'au {loan.dueDate}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{
+                                  padding: '4px 8px',
+                                  borderRadius: 8,
+                                  fontSize: 12,
+                                  background: 'var(--success-weak)',
+                                  color: 'var(--success)',
+                                  border: '1px solid var(--success)'
+                                }}>
+                                  Disponible
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <h3 style={{ margin: '4px 0 6px 0' }}>{selectedAvailableBook.title}</h3>
-                  <div style={{ color: 'var(--muted)', marginBottom: 8 }}>par {selectedAvailableBook.author}</div>
-                  <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: '120px 1fr', rowGap: 6 }}>
-                    <dt style={{ color: 'var(--muted-2)' }}>Statut</dt>
-                    <dd style={{ margin: 0 }}>Disponible</dd>
-                    {selectedAvailableBook.isbn && (
-                      <>
-                        <dt style={{ color: 'var(--muted-2)' }}>ISBN</dt>
-                        <dd style={{ margin: 0 }}>{selectedAvailableBook.isbn}</dd>
-                      </>
-                    )}
-                    {selectedAvailableBook.barcode && (
-                      <>
-                        <dt style={{ color: 'var(--muted-2)' }}>Code-barres</dt>
-                        <dd style={{ margin: 0 }}>{selectedAvailableBook.barcode}</dd>
-                      </>
-                    )}
-                    <dt style={{ color: 'var(--muted-2)' }}>Ajouté le</dt>
-                    <dd style={{ margin: 0 }}>{new Date(selectedAvailableBook.createdAt).toLocaleDateString()}</dd>
-                  </dl>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => setSelectedAvailableBook(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Fermer</button>
                 </div>
               </div>
-              <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
-                <button type="button" onClick={() => setSelectedAvailableBook(null)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Fermer</button>
-              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </section>
       )}
 
