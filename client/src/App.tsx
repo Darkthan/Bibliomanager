@@ -373,6 +373,9 @@ export function App() {
     try {
       const r = await fetch('/api/print/zpl', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ host: printerHost, port: printerPort, zpl }) });
       if (!r.ok) throw new Error('Envoi ZPL échoué');
+
+      // Marquer le livre comme imprimé après impression réussie
+      await markBooksAsPrinted([b.id]);
       alert('Étiquette envoyée à l\'imprimante.');
     } catch (e: any) {
       alert('Erreur impression ZPL: ' + (e?.message || 'inconnue'));
@@ -512,11 +515,17 @@ export function App() {
           const printers = (devices || []).filter((d: any) => d && d.deviceType === 'printer');
           if (printers.length === 0) { alert('Aucune imprimante Zebra locale trouvée.'); return; }
           const dev = printers[0];
-          dev.send(zpl, () => alert('Étiquette envoyée (local).'), (e: any) => alert('Erreur impression (local): ' + e));
+          dev.send(zpl, async () => {
+            await markBooksAsPrinted([b.id]);
+            alert('Étiquette envoyée (local).');
+          }, (e: any) => alert('Erreur impression (local): ' + e));
         }, function () { alert('Impossible d\'énumérer les imprimantes locales.'); }, 'printer');
         return;
       }
-      device.send(zpl, () => alert('Étiquette envoyée (local).'), (e: any) => alert('Erreur impression (local): ' + e));
+      device.send(zpl, async () => {
+        await markBooksAsPrinted([b.id]);
+        alert('Étiquette envoyée (local).');
+      }, (e: any) => alert('Erreur impression (local): ' + e));
     }, function () { alert('Impossible de récupérer l\'imprimante par défaut.'); });
   }
   // Import CSV (sauvegarde/restauration)
@@ -1189,7 +1198,15 @@ export function App() {
   }, [route]);
 
   function saveViewCache(state: { books: any[]; loans: any[] }) {
-    try { localStorage.setItem('bm2/viewState', JSON.stringify(state)); } catch {}
+    // Exclure labelPrinted et labelPrintedAt du cache - seul le serveur fait foi
+    const sanitizedState = {
+      books: state.books.map((b: any) => {
+        const { labelPrinted, labelPrintedAt, ...rest } = b;
+        return rest;
+      }),
+      loans: state.loans
+    };
+    try { localStorage.setItem('bm2/viewState', JSON.stringify(sanitizedState)); } catch {}
   }
   // Persistence: load once (server first, fallback to public endpoint then cache)
   useEffect(() => {
@@ -1268,8 +1285,7 @@ export function App() {
               isbn: b.isbn || undefined,
               barcode: b.barcode || undefined,
               coverUrl: b.coverUrl || undefined,
-              ...(b.labelPrinted !== undefined && { labelPrinted: b.labelPrinted }),
-              ...(b.labelPrintedAt !== undefined && { labelPrintedAt: b.labelPrintedAt }),
+              // labelPrinted et labelPrintedAt exclus du cache - seul le serveur fait foi
               ...(b.deleted !== undefined && { deleted: b.deleted }),
               ...(b.deletedAt !== undefined && { deletedAt: b.deletedAt }),
             }));
