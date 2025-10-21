@@ -67,6 +67,7 @@ export function App() {
   const [sortBy, setSortBy] = useState<'recent' | 'title' | 'author' | 'addedAsc' | 'addedDesc'>('recent');
   const [loans, setLoans] = useState<Loan[]>([]);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [loanBookId, setLoanBookId] = useState<number | ''>('');
   const [loanBookQuery, setLoanBookQuery] = useState('');
   const [showBookSuggestions, setShowBookSuggestions] = useState(false);
@@ -1097,6 +1098,9 @@ export function App() {
       };
       setLoanStartDate(toISO(today));
       setLoanDueDate(toISO(inDays(14)));
+
+      // Mark initial load as complete
+      setInitialLoadComplete(true);
     })();
   }, []);
 
@@ -1105,6 +1109,9 @@ export function App() {
     (async () => {
       try {
         if (me.username) {
+          // Disable auto-sync during reload
+          setInitialLoadComplete(false);
+
           // Si on vient de se (re)connecter, tenter de vider une sync en attente
           if (navigator.onLine) {
             await tryFlushPendingSync();
@@ -1132,9 +1139,15 @@ export function App() {
               })));
               if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
               saveViewCache({ books: d.books, loans: Array.isArray(d.loans) ? d.loans : [] });
+
+              // Re-enable auto-sync after reload
+              setInitialLoadComplete(true);
             }
           }
         } else {
+          // Disable auto-sync during reload
+          setInitialLoadComplete(false);
+
           // Logged out -> try public state
           const rp = await fetch('/api/state/public', { cache: 'no-store' });
           if (rp.ok) {
@@ -1157,6 +1170,9 @@ export function App() {
               })));
               if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
               saveViewCache({ books: d.books, loans: Array.isArray(d.loans) ? d.loans : [] });
+
+              // Re-enable auto-sync after reload
+              setInitialLoadComplete(true);
             }
           }
         }
@@ -1207,11 +1223,14 @@ export function App() {
 
   // Server sync (debounced for normal changes)
   useEffect(() => {
+    // Don't sync during initial load to avoid overwriting server state
+    if (!initialLoadComplete) return;
+
     const t = setTimeout(() => {
       syncToServer(false);
     }, 500);
     return () => clearTimeout(t);
-  }, [books, loans]);
+  }, [books, loans, initialLoadComplete]);
 
   // Immediate sync before page unload to prevent data loss
   useEffect(() => {
