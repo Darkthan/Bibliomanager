@@ -745,10 +745,8 @@ export function App() {
       }
 
       // Remplacer complètement la base de données
-      setBooks(newBooks);
-
-      // Forcer une synchronisation immédiate
-      const success = await syncAndReload();
+      // Save to server and reload
+      const success = await saveAndReload(newBooks, loans);
 
       if (success) {
         alert(`Import SQL réussi: ${newBooks.length} livre(s) importé(s). La base de données a été complètement remplacée.`);
@@ -1128,8 +1126,8 @@ export function App() {
 
   // Ne plus persister les modifications en local; la cache de visualisation est écrite après un fetch serveur.
 
-  // Sync to server and reload data
-  const syncAndReload = async () => {
+  // Send state to server and reload
+  const saveAndReload = async (newBooks: Book[], newLoans: Loan[]) => {
     if (!navigator.onLine) {
       alert('Vous devez être connecté à Internet pour effectuer des modifications.');
       return false;
@@ -1138,11 +1136,11 @@ export function App() {
     setSyncStatus('syncing');
 
     try {
-      // Save current state to server
+      // Save new state to server
       const saveResponse = await fetch('/api/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ books, loans }),
+        body: JSON.stringify({ books: newBooks, loans: newLoans }),
       });
 
       if (!saveResponse.ok) {
@@ -1185,7 +1183,7 @@ export function App() {
       setTimeout(() => setSyncStatus('idle'), 2000);
       return true;
     } catch (error) {
-      console.error('Sync and reload failed:', error);
+      console.error('Save and reload failed:', error);
       alert('Erreur de connexion au serveur.');
       setSyncStatus('error');
       setTimeout(() => setSyncStatus('idle'), 2000);
@@ -1200,27 +1198,30 @@ export function App() {
     if (isAddDisabled) return;
     const cleanIsbn = isbn.replace(/[^0-9Xx]/g, '').toUpperCase();
     const coverUrl = cleanIsbn ? `/covers/isbn/${cleanIsbn}?s=M` : undefined;
-    setBooks((prev) => [
-      {
-        id: Date.now(),
-        epc: genEpc96(),
-        title: title.trim(),
-        author: author.trim(),
-        read: false,
-        createdAt: Date.now(),
-        isbn: cleanIsbn || undefined,
-        barcode: barcode.trim() || undefined,
-        coverUrl,
-      },
-      ...prev,
-    ]);
-    setTitle('');
-    setAuthor('');
-    setIsbn('');
-    setBarcode('');
+
+    // Calculate new state
+    const newBook: Book = {
+      id: Date.now(),
+      epc: genEpc96(),
+      title: title.trim(),
+      author: author.trim(),
+      read: false,
+      createdAt: Date.now(),
+      isbn: cleanIsbn || undefined,
+      barcode: barcode.trim() || undefined,
+      coverUrl,
+    };
+    const newBooks = [newBook, ...books];
 
     // Save to server and reload
-    await syncAndReload();
+    const success = await saveAndReload(newBooks, loans);
+
+    if (success) {
+      setTitle('');
+      setAuthor('');
+      setIsbn('');
+      setBarcode('');
+    }
   }
 
   async function removeBook(id: number) {
@@ -1232,22 +1233,25 @@ export function App() {
       return;
     }
 
-    setBooks((prev) => prev.map((b) =>
+    // Calculate new state
+    const newBooks = books.map((b) =>
       b.id === id ? { ...b, deleted: true, deletedAt: Date.now() } : b
-    ));
+    );
 
     // Save to server and reload
-    await syncAndReload();
+    await saveAndReload(newBooks, loans);
   }
 
   async function restoreBook(id: number) {
     if (!requireEdit()) return;
-    setBooks((prev) => prev.map((b) =>
+
+    // Calculate new state
+    const newBooks = books.map((b) =>
       b.id === id ? { ...b, deleted: false, deletedAt: undefined } : b
-    ));
+    );
 
     // Save to server and reload
-    await syncAndReload();
+    await saveAndReload(newBooks, loans);
   }
 
   async function permanentDeleteBook(id: number) {
@@ -1259,54 +1263,57 @@ export function App() {
       return;
     }
 
-    setBooks((prev) => prev.filter((b) => b.id !== id));
+    // Calculate new state
+    const newBooks = books.filter((b) => b.id !== id);
 
     // Save to server and reload
-    await syncAndReload();
+    await saveAndReload(newBooks, loans);
   }
 
   async function saveBookEdit(id: number, patch: Partial<Book>) {
     if (!requireEdit()) return;
-    setBooks((prev) =>
-      prev.map((b) => {
-        if (b.id !== id) return b;
-        const next: Book = { ...b, ...patch } as Book;
-        if (Object.prototype.hasOwnProperty.call(patch, 'isbn')) {
-          const clean = (patch.isbn || '').replace(/[^0-9Xx]/g, '').toUpperCase();
-          next.isbn = clean || undefined;
-          // Ne pas écraser coverUrl si on a une image personnalisée (base64)
-          if (!Object.prototype.hasOwnProperty.call(patch, 'coverUrl')) {
-            next.coverUrl = clean ? `/covers/isbn/${clean}?s=M` : next.coverUrl;
-          }
+
+    // Calculate new state
+    const newBooks = books.map((b) => {
+      if (b.id !== id) return b;
+      const next: Book = { ...b, ...patch } as Book;
+      if (Object.prototype.hasOwnProperty.call(patch, 'isbn')) {
+        const clean = (patch.isbn || '').replace(/[^0-9Xx]/g, '').toUpperCase();
+        next.isbn = clean || undefined;
+        // Ne pas écraser coverUrl si on a une image personnalisée (base64)
+        if (!Object.prototype.hasOwnProperty.call(patch, 'coverUrl')) {
+          next.coverUrl = clean ? `/covers/isbn/${clean}?s=M` : next.coverUrl;
         }
-        return next;
-      }),
-    );
-    setEditingBookId(null);
+      }
+      return next;
+    });
 
     // Save to server and reload
-    await syncAndReload();
+    const success = await saveAndReload(newBooks, loans);
+
+    if (success) {
+      setEditingBookId(null);
+    }
   }
 
   async function updateBookData(id: number, patch: Partial<Book>) {
-    setBooks((prev) =>
-      prev.map((b) => {
-        if (b.id !== id) return b;
-        const next: Book = { ...b, ...patch } as Book;
-        if (Object.prototype.hasOwnProperty.call(patch, 'isbn')) {
-          const clean = (patch.isbn || '').replace(/[^0-9Xx]/g, '').toUpperCase();
-          next.isbn = clean || undefined;
-          // Ne pas écraser coverUrl si on a une image personnalisée (base64)
-          if (!Object.prototype.hasOwnProperty.call(patch, 'coverUrl')) {
-            next.coverUrl = clean ? `/covers/isbn/${clean}?s=M` : next.coverUrl;
-          }
+    // Calculate new state
+    const newBooks = books.map((b) => {
+      if (b.id !== id) return b;
+      const next: Book = { ...b, ...patch } as Book;
+      if (Object.prototype.hasOwnProperty.call(patch, 'isbn')) {
+        const clean = (patch.isbn || '').replace(/[^0-9Xx]/g, '').toUpperCase();
+        next.isbn = clean || undefined;
+        // Ne pas écraser coverUrl si on a une image personnalisée (base64)
+        if (!Object.prototype.hasOwnProperty.call(patch, 'coverUrl')) {
+          next.coverUrl = clean ? `/covers/isbn/${clean}?s=M` : next.coverUrl;
         }
-        return next;
-      }),
-    );
+      }
+      return next;
+    });
 
     // Save to server and reload
-    await syncAndReload();
+    await saveAndReload(newBooks, loans);
   }
 
   function toggleRead(id: number) {
@@ -2202,38 +2209,45 @@ export function App() {
   async function addLoan() {
     if (!requireEdit()) return;
     if (!loanBookId || loanBorrower.trim() === '' || loanStartDate === '' || loanDueDate === '') return;
-    setLoans((prev) => [
-      {
-        id: Date.now(),
-        bookId: loanBookId as number,
-        borrower: loanBorrower.trim(),
-        startDate: loanStartDate,
-        dueDate: loanDueDate,
-      },
-      ...prev,
-    ]);
-    setLoanBorrower('');
-    setLoanBookId('');
+
+    // Calculate new state
+    const newLoan: Loan = {
+      id: Date.now(),
+      bookId: loanBookId as number,
+      borrower: loanBorrower.trim(),
+      startDate: loanStartDate,
+      dueDate: loanDueDate,
+    };
+    const newLoans = [newLoan, ...loans];
 
     // Save to server and reload
-    await syncAndReload();
+    const success = await saveAndReload(books, newLoans);
+
+    if (success) {
+      setLoanBorrower('');
+      setLoanBookId('');
+    }
   }
 
   async function returnLoan(id: number) {
     if (!requireEdit()) return;
     const today = new Date().toISOString().slice(0, 10);
-    setLoans((prev) => prev.map((l) => (l.id === id ? { ...l, returnedAt: today } : l)));
+
+    // Calculate new state
+    const newLoans = loans.map((l) => (l.id === id ? { ...l, returnedAt: today } : l));
 
     // Save to server and reload
-    await syncAndReload();
+    await saveAndReload(books, newLoans);
   }
 
   async function deleteLoan(id: number) {
     if (!requireEdit()) return;
-    setLoans((prev) => prev.filter((x) => x.id !== id));
+
+    // Calculate new state
+    const newLoans = loans.filter((x) => x.id !== id);
 
     // Save to server and reload
-    await syncAndReload();
+    await saveAndReload(books, newLoans);
   }
 
   const loanUtils = {
@@ -3199,15 +3213,14 @@ export function App() {
     
     // Ajouter les nouveaux livres
     if (toAdd.length > 0) {
-      setBooks((prev) => [...toAdd, ...prev]);
-    }
-    
-    setImportItems((prev) => prev.filter((it) => it.status !== 'ok'));
+      // Calculate new state
+      const newBooks = [...toAdd, ...books];
 
-    // Force immediate sync after import to prevent data loss
-    if (toAdd.length > 0) {
-      await syncAndReload();
+      // Save to server and reload
+      await saveAndReload(newBooks, loans);
     }
+
+    setImportItems((prev) => prev.filter((it) => it.status !== 'ok'));
 
     if (allRelevantIds.length > 0) {
       console.log('Opening print modal for', allRelevantIds.length, 'books');
@@ -5244,8 +5257,10 @@ export function App() {
                     onClick={async () => {
                       if (!requireEdit()) return;
                       if (confirm('Êtes-vous sûr de vouloir vider entièrement la corbeille ? Cette action est irréversible.')) {
-                        setBooks(prev => prev.filter(b => !b.deleted));
-                        await syncAndReload();
+                        // Calculate new state
+                        const newBooks = books.filter(b => !b.deleted);
+                        // Save to server and reload
+                        await saveAndReload(newBooks, loans);
                       }
                     }}
                     style={{
@@ -5263,8 +5278,10 @@ export function App() {
                     onClick={async () => {
                       if (!requireEdit()) return;
                       if (confirm('Êtes-vous sûr de vouloir restaurer tous les livres de la corbeille ?')) {
-                        setBooks(prev => prev.map(b => b.deleted ? { ...b, deleted: false, deletedAt: undefined } : b));
-                        await syncAndReload();
+                        // Calculate new state
+                        const newBooks = books.map(b => b.deleted ? { ...b, deleted: false, deletedAt: undefined } : b);
+                        // Save to server and reload
+                        await saveAndReload(newBooks, loans);
                       }
                     }}
                     style={{
