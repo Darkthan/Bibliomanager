@@ -153,6 +153,7 @@ export function App() {
   const [importMode, setImportMode] = useState<'camera' | 'lecteur' | 'csv'>('lecteur');
   const [importItems, setImportItems] = useState<ImportItem[]>([]);
   const [importInput, setImportInput] = useState('');
+  const [editingImportItems, setEditingImportItems] = useState<Set<string>>(new Set());
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
@@ -5382,7 +5383,9 @@ export function App() {
           <p>Aucun élément en file d'import.</p>
         ) : (
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
-            {importItems.map((it) => (
+            {importItems.map((it) => {
+              const isEditing = it.status === 'not_found' || editingImportItems.has(it.barcode);
+              return (
               <li key={it.barcode} style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 12, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
                   {it.coverUrl ? (
@@ -5393,7 +5396,7 @@ export function App() {
                     <div style={{ width: 36, height: 54, background: 'var(--card-placeholder)', borderRadius: 4 }} />
                   )}
                   <div style={{ minWidth: 0 }}>
-                    {it.status === 'not_found' ? (
+                    {isEditing ? (
                       <div style={{ display: 'grid', gap: 6 }}>
                         <div style={{ display: 'grid', gap: 6, gridTemplateColumns: '1fr 1fr' }}>
                           <input
@@ -5421,15 +5424,36 @@ export function App() {
                           />
                           <div style={{ color: 'var(--muted-2)', fontSize: 12 }}>CB {it.barcode}</div>
                         </div>
-                        <div>
-                          <button
-                            type="button"
-                            onClick={() => markImportItemReady(it.barcode)}
-                            disabled={!((it.title || '').trim() && (it.author || '').trim())}
-                            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--success)', background: ((it.title || '').trim() && (it.author || '').trim()) ? 'var(--success)' : '#9ae6b4', color: 'white' }}
-                          >
-                            Marquer comme prêt
-                          </button>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          {it.status === 'not_found' && (
+                            <button
+                              type="button"
+                              onClick={() => markImportItemReady(it.barcode)}
+                              disabled={!((it.title || '').trim() && (it.author || '').trim())}
+                              style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--success)', background: ((it.title || '').trim() && (it.author || '').trim()) ? 'var(--success)' : '#9ae6b4', color: 'white' }}
+                            >
+                              Marquer comme prêt
+                            </button>
+                          )}
+                          {it.status !== 'not_found' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingImportItems(prev => {
+                                  const next = new Set(prev);
+                                  next.delete(it.barcode);
+                                  return next;
+                                });
+                                // Update coverUrl if ISBN changed
+                                if (it.isbn) {
+                                  updateImportItem(it.barcode, { coverUrl: `/covers/isbn/${it.isbn}?s=S` });
+                                }
+                              }}
+                              style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--success)', background: 'var(--success)', color: 'white' }}
+                            >
+                              Sauvegarder
+                            </button>
+                          )}
                         </div>
                       </div>
                     ) : (
@@ -5445,10 +5469,23 @@ export function App() {
                   <span style={{ padding: '4px 8px', borderRadius: 999, fontSize: 12, border: '1px solid var(--border)', background: it.status === 'ok' ? 'var(--chip-ok-bg)' : it.status === 'pending' ? 'var(--card-placeholder)' : it.status === 'not_found' ? 'var(--warn-bg)' : 'var(--chip-bad-bg)', color: it.status === 'ok' ? 'var(--chip-ok-text)' : it.status === 'not_found' ? 'var(--warn-text)' : it.status === 'error' ? 'var(--chip-bad-text)' : 'var(--text)' }}>
                     {it.status === 'ok' ? 'OK' : it.status === 'pending' ? 'En cours' : it.status === 'not_found' ? 'Introuvable' : 'Erreur'}
                   </span>
+                  {!isEditing && it.status !== 'pending' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingImportItems(prev => new Set(prev).add(it.barcode));
+                      }}
+                      aria-label={`Modifier ${it.barcode}`}
+                      style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}
+                    >
+                      Modifier
+                    </button>
+                  )}
                   <button type="button" onClick={() => setImportItems((prev) => prev.filter((x) => x.barcode !== it.barcode))} aria-label={`Retirer ${it.barcode}`} style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--btn-secondary-bg)' }}>Retirer</button>
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
         </>
