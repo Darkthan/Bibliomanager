@@ -634,13 +634,15 @@ export function App() {
 
   function exportToSQL() {
     const activeBooks = books.filter(b => !b.deleted);
-    if (activeBooks.length === 0) {
-      alert('Aucun livre à exporter');
+    if (activeBooks.length === 0 && loans.length === 0) {
+      alert('Aucune donnée à exporter');
       return;
     }
 
     let sql = `-- Export Bibliomanager - ${new Date().toISOString()}\n`;
-    sql += `-- ${activeBooks.length} livre(s) exporté(s)\n\n`;
+    sql += `-- ${activeBooks.length} livre(s) et ${loans.length} prêt(s) exporté(s)\n\n`;
+
+    // Table books
     sql += `DROP TABLE IF EXISTS books;\n`;
     sql += `CREATE TABLE books (\n`;
     sql += `  id INTEGER PRIMARY KEY,\n`;
@@ -654,29 +656,54 @@ export function App() {
     sql += `  coverUrl TEXT\n`;
     sql += `);\n\n`;
 
-    sql += `INSERT INTO books (id, epc, title, author, read, createdAt, isbn, barcode, coverUrl) VALUES\n`;
-    const values = activeBooks.map(b => {
-      const title = (b.title || '').replace(/'/g, "''");
-      const author = (b.author || '').replace(/'/g, "''");
-      const epc = (b.epc || '').replace(/'/g, "''");
-      const isbn = b.isbn ? `'${b.isbn.replace(/'/g, "''")}'` : 'NULL';
-      const barcode = b.barcode ? `'${b.barcode.replace(/'/g, "''")}'` : 'NULL';
-      const coverUrl = b.coverUrl ? `'${b.coverUrl.replace(/'/g, "''")}'` : 'NULL';
-      return `  (${b.id}, '${epc}', '${title}', '${author}', ${b.read ? 1 : 0}, ${b.createdAt}, ${isbn}, ${barcode}, ${coverUrl})`;
-    });
-    sql += values.join(',\n') + ';\n';
+    if (activeBooks.length > 0) {
+      sql += `INSERT INTO books (id, epc, title, author, read, createdAt, isbn, barcode, coverUrl) VALUES\n`;
+      const values = activeBooks.map(b => {
+        const title = (b.title || '').replace(/'/g, "''");
+        const author = (b.author || '').replace(/'/g, "''");
+        const epc = (b.epc || '').replace(/'/g, "''");
+        const isbn = b.isbn ? `'${b.isbn.replace(/'/g, "''")}'` : 'NULL';
+        const barcode = b.barcode ? `'${b.barcode.replace(/'/g, "''")}'` : 'NULL';
+        const coverUrl = b.coverUrl ? `'${b.coverUrl.replace(/'/g, "''")}'` : 'NULL';
+        return `  (${b.id}, '${epc}', '${title}', '${author}', ${b.read ? 1 : 0}, ${b.createdAt}, ${isbn}, ${barcode}, ${coverUrl})`;
+      });
+      sql += values.join(',\n') + ';\n\n';
+    }
+
+    // Table loans
+    sql += `DROP TABLE IF EXISTS loans;\n`;
+    sql += `CREATE TABLE loans (\n`;
+    sql += `  id INTEGER PRIMARY KEY,\n`;
+    sql += `  bookId INTEGER NOT NULL,\n`;
+    sql += `  borrower TEXT NOT NULL,\n`;
+    sql += `  startDate TEXT NOT NULL,\n`;
+    sql += `  dueDate TEXT NOT NULL,\n`;
+    sql += `  returnedAt TEXT\n`;
+    sql += `);\n\n`;
+
+    if (loans.length > 0) {
+      sql += `INSERT INTO loans (id, bookId, borrower, startDate, dueDate, returnedAt) VALUES\n`;
+      const loanValues = loans.map(l => {
+        const borrower = (l.borrower || '').replace(/'/g, "''");
+        const startDate = (l.startDate || '').replace(/'/g, "''");
+        const dueDate = (l.dueDate || '').replace(/'/g, "''");
+        const returnedAt = l.returnedAt ? `'${l.returnedAt.replace(/'/g, "''")}'` : 'NULL';
+        return `  (${l.id}, ${l.bookId}, '${borrower}', '${startDate}', '${dueDate}', ${returnedAt})`;
+      });
+      sql += loanValues.join(',\n') + ';\n';
+    }
 
     const blob = new Blob([sql], { type: 'text/sql;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     const date = new Date().toISOString().split('T')[0];
-    a.href = url; 
+    a.href = url;
     a.download = `bibliomanager-export-${date}.sql`;
-    document.body.appendChild(a); 
-    a.click(); 
+    document.body.appendChild(a);
+    a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    alert(`Export SQL réussi: ${activeBooks.length} livre(s) exporté(s)`);
+    alert(`Export SQL réussi: ${activeBooks.length} livre(s) et ${loans.length} prêt(s) exporté(s)`);
   }
 
   async function handleSQLFileImport(event: React.ChangeEvent<HTMLInputElement>) {
@@ -699,57 +726,82 @@ export function App() {
     }
 
     try {
-      // Parser le contenu SQL pour extraire les données
-      const insertMatch = sqlContent.match(/INSERT INTO books.*?VALUES\s*\n([\s\S]*?);/i);
-      if (!insertMatch) {
-        throw new Error('Format SQL invalide: aucune instruction INSERT trouvée');
-      }
-
-      const valuesContent = insertMatch[1];
-      const lines = valuesContent.split(/,\s*\n/).map(line => line.trim());
-      
+      // Parser le contenu SQL pour extraire les livres
+      const booksInsertMatch = sqlContent.match(/INSERT INTO books.*?VALUES\s*\n([\s\S]*?);/i);
       const newBooks: Book[] = [];
-      let maxId = 0;
 
-      for (const line of lines) {
-        const match = line.match(/\(\s*(\d+),\s*'([^']*)',\s*'([^']*)',\s*'([^']*)',\s*(\d+),\s*(\d+),\s*(NULL|'[^']*'),\s*(NULL|'[^']*'),\s*(NULL|'[^']*')\s*\)$/);
-        if (!match) continue;
+      if (booksInsertMatch) {
+        const valuesContent = booksInsertMatch[1];
+        const lines = valuesContent.split(/,\s*\n/).map(line => line.trim());
 
-        const id = parseInt(match[1]);
-        const epc = match[2].replace(/''/g, "'");
-        const title = match[3].replace(/''/g, "'");
-        const author = match[4].replace(/''/g, "'");
-        const read = match[5] === '1';
-        const createdAt = parseInt(match[6]);
-        const isbn = match[7] === 'NULL' ? undefined : match[7].slice(1, -1).replace(/''/g, "'");
-        const barcode = match[8] === 'NULL' ? undefined : match[8].slice(1, -1).replace(/''/g, "'");
-        const coverUrl = match[9] === 'NULL' ? undefined : match[9].slice(1, -1).replace(/''/g, "'");
+        for (const line of lines) {
+          const match = line.match(/\(\s*(\d+),\s*'([^']*)',\s*'([^']*)',\s*'([^']*)',\s*(\d+),\s*(\d+),\s*(NULL|'[^']*'),\s*(NULL|'[^']*'),\s*(NULL|'[^']*')\s*\)$/);
+          if (!match) continue;
 
-        maxId = Math.max(maxId, id);
-        
-        newBooks.push({
-          id,
-          epc,
-          title,
-          author,
-          read,
-          createdAt,
-          isbn,
-          barcode,
-          coverUrl
-        });
+          const id = parseInt(match[1]);
+          const epc = match[2].replace(/''/g, "'");
+          const title = match[3].replace(/''/g, "'");
+          const author = match[4].replace(/''/g, "'");
+          const read = match[5] === '1';
+          const createdAt = parseInt(match[6]);
+          const isbn = match[7] === 'NULL' ? undefined : match[7].slice(1, -1).replace(/''/g, "'");
+          const barcode = match[8] === 'NULL' ? undefined : match[8].slice(1, -1).replace(/''/g, "'");
+          const coverUrl = match[9] === 'NULL' ? undefined : match[9].slice(1, -1).replace(/''/g, "'");
+
+          newBooks.push({
+            id,
+            epc,
+            title,
+            author,
+            read,
+            createdAt,
+            isbn,
+            barcode,
+            coverUrl
+          });
+        }
       }
 
-      if (newBooks.length === 0) {
+      // Parser le contenu SQL pour extraire les prêts
+      const loansInsertMatch = sqlContent.match(/INSERT INTO loans.*?VALUES\s*\n([\s\S]*?);/i);
+      const newLoans: Loan[] = [];
+
+      if (loansInsertMatch) {
+        const valuesContent = loansInsertMatch[1];
+        const lines = valuesContent.split(/,\s*\n/).map(line => line.trim());
+
+        for (const line of lines) {
+          const match = line.match(/\(\s*(\d+),\s*(\d+),\s*'([^']*)',\s*'([^']*)',\s*'([^']*)',\s*(NULL|'[^']*')\s*\)$/);
+          if (!match) continue;
+
+          const id = parseInt(match[1]);
+          const bookId = parseInt(match[2]);
+          const borrower = match[3].replace(/''/g, "'");
+          const startDate = match[4].replace(/''/g, "'");
+          const dueDate = match[5].replace(/''/g, "'");
+          const returnedAt = match[6] === 'NULL' ? undefined : match[6].slice(1, -1).replace(/''/g, "'");
+
+          newLoans.push({
+            id,
+            bookId,
+            borrower,
+            startDate,
+            dueDate,
+            returnedAt
+          });
+        }
+      }
+
+      if (newBooks.length === 0 && newLoans.length === 0) {
         throw new Error('Aucune donnée valide trouvée dans le fichier SQL');
       }
 
       // Remplacer complètement la base de données
       // Save to server and reload
-      const success = await saveAndReload(newBooks, loans);
+      const success = await saveAndReload(newBooks, newLoans);
 
       if (success) {
-        alert(`Import SQL réussi: ${newBooks.length} livre(s) importé(s). La base de données a été complètement remplacée.`);
+        alert(`Import SQL réussi: ${newBooks.length} livre(s) et ${newLoans.length} prêt(s) importé(s). La base de données a été complètement remplacée.`);
       }
     } catch (error: any) {
       alert('Erreur lors de l\'import SQL: ' + (error?.message || 'Format de fichier invalide'));
