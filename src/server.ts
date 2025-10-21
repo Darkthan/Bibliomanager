@@ -1477,6 +1477,106 @@ export function requestHandler(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  // Full database export (admin only)
+  if (method === 'GET' && url.pathname === '/api/export/full') {
+    (async () => {
+      try {
+        // Require admin role
+        const cookies = parseCookies(req);
+        const token = cookies['bm2_auth'] || '';
+        const claims = token ? await verifyToken(token) : null;
+        if (!hasRequiredRole(claims?.r, ['admin'])) {
+          return sendJSON(res, 401, { error: 'unauthorized' });
+        }
+
+        // Read all data
+        const state = await readState();
+        const users = await readUsers();
+        const passkeys = await readPasskeys();
+        const apiKeys = await readApiKeys();
+        const webauthnConfig = await readWebAuthnConfig();
+
+        const fullExport = {
+          books: state.books,
+          loans: state.loans,
+          users: users.map(u => ({ username: u.username, roles: u.roles, pass: u.pass })),
+          passkeys: passkeys,
+          apiKeys: apiKeys,
+          webauthnConfig: webauthnConfig,
+          exportedAt: new Date().toISOString(),
+        };
+
+        return sendJSON(res, 200, fullExport);
+      } catch (e: any) {
+        return sendJSON(res, 500, { error: 'export_failed', message: e?.message || String(e) });
+      }
+    })();
+    return;
+  }
+
+  // Full database import (admin only)
+  if (method === 'POST' && url.pathname === '/api/import/full') {
+    (async () => {
+      try {
+        // Require admin role
+        const cookies = parseCookies(req);
+        const token = cookies['bm2_auth'] || '';
+        const claims = token ? await verifyToken(token) : null;
+        if (!hasRequiredRole(claims?.r, ['admin'])) {
+          return sendJSON(res, 401, { error: 'unauthorized' });
+        }
+
+        const chunks: Buffer[] = [];
+        let size = 0;
+        await new Promise<void>((resolve, reject) => {
+          req.on('data', (c) => {
+            chunks.push(c as Buffer);
+            size += (c as Buffer).length;
+            if (size > 10_000_000) { // 10MB limit
+              reject(new Error('payload_too_large'));
+              req.destroy();
+            }
+          });
+          req.on('end', resolve);
+          req.on('error', reject);
+        });
+
+        const raw = Buffer.concat(chunks).toString('utf-8');
+        const data = JSON.parse(raw || '{}');
+
+        // Restore all data
+        if (data.books || data.loans) {
+          await writeState({
+            books: Array.isArray(data.books) ? data.books : [],
+            loans: Array.isArray(data.loans) ? data.loans : []
+          });
+        }
+
+        if (Array.isArray(data.users)) {
+          await writeUsers(data.users);
+        }
+
+        if (Array.isArray(data.passkeys)) {
+          await writePasskeys(data.passkeys);
+        }
+
+        if (Array.isArray(data.apiKeys)) {
+          await mkdir(dataDir, { recursive: true });
+          await fsWriteFile(apiKeysPath, JSON.stringify(data.apiKeys, null, 2));
+        }
+
+        if (data.webauthnConfig) {
+          await writeWebAuthnConfig(data.webauthnConfig);
+        }
+
+        return sendJSON(res, 200, { ok: true, message: 'Full import successful' });
+      } catch (e: any) {
+        return sendJSON(res, 500, { error: 'import_failed', message: e?.message || String(e) });
+      }
+    })();
+    return;
+  }
+
   // Default route
   return sendText(res, 200, 'Bibliomanager');
 }

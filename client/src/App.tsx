@@ -632,78 +632,174 @@ export function App() {
     alert(`Export réussi: ${activeBooks.length} livre(s) exporté(s)`);
   }
 
-  function exportToSQL() {
-    const activeBooks = books.filter(b => !b.deleted);
-    if (activeBooks.length === 0 && loans.length === 0) {
-      alert('Aucune donnée à exporter');
-      return;
+  async function exportToSQL() {
+    try {
+      // Fetch full data from server
+      const response = await fetch('/api/export/full', { cache: 'no-store' });
+      if (!response.ok) {
+        if (response.status === 401) {
+          alert('Session expirée. Veuillez vous reconnecter.');
+          return;
+        }
+        throw new Error(`Erreur serveur: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const activeBooks = (data.books || []).filter((b: any) => !b.deleted);
+      const allLoans = data.loans || [];
+      const users = data.users || [];
+      const passkeys = data.passkeys || [];
+      const apiKeys = data.apiKeys || [];
+      const webauthnConfig = data.webauthnConfig || {};
+
+      let sql = `-- Export Bibliomanager complet - ${new Date().toISOString()}\n`;
+      sql += `-- ${activeBooks.length} livre(s), ${allLoans.length} prêt(s), ${users.length} utilisateur(s)\n\n`;
+
+      // Table users
+      sql += `DROP TABLE IF EXISTS users;\n`;
+      sql += `CREATE TABLE users (\n`;
+      sql += `  username TEXT PRIMARY KEY,\n`;
+      sql += `  pass TEXT NOT NULL,\n`;
+      sql += `  roles TEXT NOT NULL\n`;
+      sql += `);\n\n`;
+
+      if (users.length > 0) {
+        sql += `INSERT INTO users (username, pass, roles) VALUES\n`;
+        const userValues = users.map((u: any) => {
+          const username = (u.username || '').replace(/'/g, "''");
+          const pass = (u.pass || '').replace(/'/g, "''");
+          const roles = (Array.isArray(u.roles) ? u.roles.join(',') : '').replace(/'/g, "''");
+          return `  ('${username}', '${pass}', '${roles}')`;
+        });
+        sql += userValues.join(',\n') + ';\n\n';
+      }
+
+      // Table passkeys
+      sql += `DROP TABLE IF EXISTS passkeys;\n`;
+      sql += `CREATE TABLE passkeys (\n`;
+      sql += `  id TEXT PRIMARY KEY,\n`;
+      sql += `  username TEXT NOT NULL,\n`;
+      sql += `  credentialID TEXT NOT NULL,\n`;
+      sql += `  credentialPublicKey TEXT NOT NULL,\n`;
+      sql += `  counter INTEGER NOT NULL,\n`;
+      sql += `  transports TEXT\n`;
+      sql += `);\n\n`;
+
+      if (passkeys.length > 0) {
+        sql += `INSERT INTO passkeys (id, username, credentialID, credentialPublicKey, counter, transports) VALUES\n`;
+        const passkeyValues = passkeys.map((p: any) => {
+          const id = (p.id || '').replace(/'/g, "''");
+          const username = (p.username || '').replace(/'/g, "''");
+          const credentialID = (p.credentialID || '').replace(/'/g, "''");
+          const credentialPublicKey = (p.credentialPublicKey || '').replace(/'/g, "''");
+          const counter = p.counter || 0;
+          const transports = p.transports ? `'${(Array.isArray(p.transports) ? p.transports.join(',') : '').replace(/'/g, "''")}'` : 'NULL';
+          return `  ('${id}', '${username}', '${credentialID}', '${credentialPublicKey}', ${counter}, ${transports})`;
+        });
+        sql += passkeyValues.join(',\n') + ';\n\n';
+      }
+
+      // Table apiKeys
+      sql += `DROP TABLE IF EXISTS apiKeys;\n`;
+      sql += `CREATE TABLE apiKeys (\n`;
+      sql += `  key TEXT PRIMARY KEY,\n`;
+      sql += `  label TEXT NOT NULL,\n`;
+      sql += `  createdAt INTEGER NOT NULL\n`;
+      sql += `);\n\n`;
+
+      if (apiKeys.length > 0) {
+        sql += `INSERT INTO apiKeys (key, label, createdAt) VALUES\n`;
+        const apiKeyValues = apiKeys.map((k: any) => {
+          const key = (k.key || '').replace(/'/g, "''");
+          const label = (k.label || '').replace(/'/g, "''");
+          const createdAt = k.createdAt || 0;
+          return `  ('${key}', '${label}', ${createdAt})`;
+        });
+        sql += apiKeyValues.join(',\n') + ';\n\n';
+      }
+
+      // Table webauthnConfig
+      sql += `DROP TABLE IF EXISTS webauthnConfig;\n`;
+      sql += `CREATE TABLE webauthnConfig (\n`;
+      sql += `  key TEXT PRIMARY KEY,\n`;
+      sql += `  value TEXT NOT NULL\n`;
+      sql += `);\n\n`;
+
+      if (Object.keys(webauthnConfig).length > 0) {
+        sql += `INSERT INTO webauthnConfig (key, value) VALUES\n`;
+        const configValues = Object.entries(webauthnConfig).map(([key, value]) => {
+          const k = key.replace(/'/g, "''");
+          const v = (typeof value === 'string' ? value : JSON.stringify(value)).replace(/'/g, "''");
+          return `  ('${k}', '${v}')`;
+        });
+        sql += configValues.join(',\n') + ';\n\n';
+      }
+
+      // Table books
+      sql += `DROP TABLE IF EXISTS books;\n`;
+      sql += `CREATE TABLE books (\n`;
+      sql += `  id INTEGER PRIMARY KEY,\n`;
+      sql += `  epc TEXT NOT NULL,\n`;
+      sql += `  title TEXT NOT NULL,\n`;
+      sql += `  author TEXT NOT NULL,\n`;
+      sql += `  read BOOLEAN DEFAULT 0,\n`;
+      sql += `  createdAt INTEGER NOT NULL,\n`;
+      sql += `  isbn TEXT,\n`;
+      sql += `  barcode TEXT,\n`;
+      sql += `  coverUrl TEXT\n`;
+      sql += `);\n\n`;
+
+      if (activeBooks.length > 0) {
+        sql += `INSERT INTO books (id, epc, title, author, read, createdAt, isbn, barcode, coverUrl) VALUES\n`;
+        const values = activeBooks.map((b: any) => {
+          const title = (b.title || '').replace(/'/g, "''");
+          const author = (b.author || '').replace(/'/g, "''");
+          const epc = (b.epc || '').replace(/'/g, "''");
+          const isbn = b.isbn ? `'${b.isbn.replace(/'/g, "''")}'` : 'NULL';
+          const barcode = b.barcode ? `'${b.barcode.replace(/'/g, "''")}'` : 'NULL';
+          const coverUrl = b.coverUrl ? `'${b.coverUrl.replace(/'/g, "''")}'` : 'NULL';
+          return `  (${b.id}, '${epc}', '${title}', '${author}', ${b.read ? 1 : 0}, ${b.createdAt}, ${isbn}, ${barcode}, ${coverUrl})`;
+        });
+        sql += values.join(',\n') + ';\n\n';
+      }
+
+      // Table loans
+      sql += `DROP TABLE IF EXISTS loans;\n`;
+      sql += `CREATE TABLE loans (\n`;
+      sql += `  id INTEGER PRIMARY KEY,\n`;
+      sql += `  bookId INTEGER NOT NULL,\n`;
+      sql += `  borrower TEXT NOT NULL,\n`;
+      sql += `  startDate TEXT NOT NULL,\n`;
+      sql += `  dueDate TEXT NOT NULL,\n`;
+      sql += `  returnedAt TEXT\n`;
+      sql += `);\n\n`;
+
+      if (allLoans.length > 0) {
+        sql += `INSERT INTO loans (id, bookId, borrower, startDate, dueDate, returnedAt) VALUES\n`;
+        const loanValues = allLoans.map((l: any) => {
+          const borrower = (l.borrower || '').replace(/'/g, "''");
+          const startDate = (l.startDate || '').replace(/'/g, "''");
+          const dueDate = (l.dueDate || '').replace(/'/g, "''");
+          const returnedAt = l.returnedAt ? `'${l.returnedAt.replace(/'/g, "''")}'` : 'NULL';
+          return `  (${l.id}, ${l.bookId}, '${borrower}', '${startDate}', '${dueDate}', ${returnedAt})`;
+        });
+        sql += loanValues.join(',\n') + ';\n';
+      }
+
+      const blob = new Blob([sql], { type: 'text/sql;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const date = new Date().toISOString().split('T')[0];
+      a.href = url;
+      a.download = `bibliomanager-full-export-${date}.sql`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      alert(`Export SQL complet réussi: ${users.length} utilisateur(s), ${activeBooks.length} livre(s), ${allLoans.length} prêt(s), ${passkeys.length} clé(s) d'accès`);
+    } catch (error: any) {
+      alert('Erreur lors de l\'export SQL: ' + (error?.message || 'Erreur inconnue'));
     }
-
-    let sql = `-- Export Bibliomanager - ${new Date().toISOString()}\n`;
-    sql += `-- ${activeBooks.length} livre(s) et ${loans.length} prêt(s) exporté(s)\n\n`;
-
-    // Table books
-    sql += `DROP TABLE IF EXISTS books;\n`;
-    sql += `CREATE TABLE books (\n`;
-    sql += `  id INTEGER PRIMARY KEY,\n`;
-    sql += `  epc TEXT NOT NULL,\n`;
-    sql += `  title TEXT NOT NULL,\n`;
-    sql += `  author TEXT NOT NULL,\n`;
-    sql += `  read BOOLEAN DEFAULT 0,\n`;
-    sql += `  createdAt INTEGER NOT NULL,\n`;
-    sql += `  isbn TEXT,\n`;
-    sql += `  barcode TEXT,\n`;
-    sql += `  coverUrl TEXT\n`;
-    sql += `);\n\n`;
-
-    if (activeBooks.length > 0) {
-      sql += `INSERT INTO books (id, epc, title, author, read, createdAt, isbn, barcode, coverUrl) VALUES\n`;
-      const values = activeBooks.map(b => {
-        const title = (b.title || '').replace(/'/g, "''");
-        const author = (b.author || '').replace(/'/g, "''");
-        const epc = (b.epc || '').replace(/'/g, "''");
-        const isbn = b.isbn ? `'${b.isbn.replace(/'/g, "''")}'` : 'NULL';
-        const barcode = b.barcode ? `'${b.barcode.replace(/'/g, "''")}'` : 'NULL';
-        const coverUrl = b.coverUrl ? `'${b.coverUrl.replace(/'/g, "''")}'` : 'NULL';
-        return `  (${b.id}, '${epc}', '${title}', '${author}', ${b.read ? 1 : 0}, ${b.createdAt}, ${isbn}, ${barcode}, ${coverUrl})`;
-      });
-      sql += values.join(',\n') + ';\n\n';
-    }
-
-    // Table loans
-    sql += `DROP TABLE IF EXISTS loans;\n`;
-    sql += `CREATE TABLE loans (\n`;
-    sql += `  id INTEGER PRIMARY KEY,\n`;
-    sql += `  bookId INTEGER NOT NULL,\n`;
-    sql += `  borrower TEXT NOT NULL,\n`;
-    sql += `  startDate TEXT NOT NULL,\n`;
-    sql += `  dueDate TEXT NOT NULL,\n`;
-    sql += `  returnedAt TEXT\n`;
-    sql += `);\n\n`;
-
-    if (loans.length > 0) {
-      sql += `INSERT INTO loans (id, bookId, borrower, startDate, dueDate, returnedAt) VALUES\n`;
-      const loanValues = loans.map(l => {
-        const borrower = (l.borrower || '').replace(/'/g, "''");
-        const startDate = (l.startDate || '').replace(/'/g, "''");
-        const dueDate = (l.dueDate || '').replace(/'/g, "''");
-        const returnedAt = l.returnedAt ? `'${l.returnedAt.replace(/'/g, "''")}'` : 'NULL';
-        return `  (${l.id}, ${l.bookId}, '${borrower}', '${startDate}', '${dueDate}', ${returnedAt})`;
-      });
-      sql += loanValues.join(',\n') + ';\n';
-    }
-
-    const blob = new Blob([sql], { type: 'text/sql;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const date = new Date().toISOString().split('T')[0];
-    a.href = url;
-    a.download = `bibliomanager-export-${date}.sql`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    alert(`Export SQL réussi: ${activeBooks.length} livre(s) et ${loans.length} prêt(s) exporté(s)`);
   }
 
   async function handleSQLFileImport(event: React.ChangeEvent<HTMLInputElement>) {
@@ -726,13 +822,96 @@ export function App() {
     }
 
     try {
-      // Parser le contenu SQL pour extraire les livres
-      const booksInsertMatch = sqlContent.match(/INSERT INTO books.*?VALUES\s*\n([\s\S]*?);/i);
-      const newBooks: Book[] = [];
+      const importData: any = {};
 
+      // Parser users
+      const usersInsertMatch = sqlContent.match(/INSERT INTO users.*?VALUES\s*\n([\s\S]*?);/i);
+      if (usersInsertMatch) {
+        const valuesContent = usersInsertMatch[1];
+        const lines = valuesContent.split(/,\s*\n/).map(line => line.trim());
+        importData.users = [];
+
+        for (const line of lines) {
+          const match = line.match(/\(\s*'([^']*)',\s*'([^']*)',\s*'([^']*)'\s*\)$/);
+          if (!match) continue;
+
+          const username = match[1].replace(/''/g, "'");
+          const pass = match[2].replace(/''/g, "'");
+          const roles = match[3].replace(/''/g, "'").split(',').filter(r => r);
+
+          importData.users.push({ username, pass, roles });
+        }
+      }
+
+      // Parser passkeys
+      const passkeysInsertMatch = sqlContent.match(/INSERT INTO passkeys.*?VALUES\s*\n([\s\S]*?);/i);
+      if (passkeysInsertMatch) {
+        const valuesContent = passkeysInsertMatch[1];
+        const lines = valuesContent.split(/,\s*\n/).map(line => line.trim());
+        importData.passkeys = [];
+
+        for (const line of lines) {
+          const match = line.match(/\(\s*'([^']*)',\s*'([^']*)',\s*'([^']*)',\s*'([^']*)',\s*(\d+),\s*(NULL|'[^']*')\s*\)$/);
+          if (!match) continue;
+
+          const id = match[1].replace(/''/g, "'");
+          const username = match[2].replace(/''/g, "'");
+          const credentialID = match[3].replace(/''/g, "'");
+          const credentialPublicKey = match[4].replace(/''/g, "'");
+          const counter = parseInt(match[5]);
+          const transports = match[6] === 'NULL' ? undefined : match[6].slice(1, -1).replace(/''/g, "'").split(',').filter(t => t);
+
+          importData.passkeys.push({ id, username, credentialID, credentialPublicKey, counter, transports });
+        }
+      }
+
+      // Parser apiKeys
+      const apiKeysInsertMatch = sqlContent.match(/INSERT INTO apiKeys.*?VALUES\s*\n([\s\S]*?);/i);
+      if (apiKeysInsertMatch) {
+        const valuesContent = apiKeysInsertMatch[1];
+        const lines = valuesContent.split(/,\s*\n/).map(line => line.trim());
+        importData.apiKeys = [];
+
+        for (const line of lines) {
+          const match = line.match(/\(\s*'([^']*)',\s*'([^']*)',\s*(\d+)\s*\)$/);
+          if (!match) continue;
+
+          const key = match[1].replace(/''/g, "'");
+          const label = match[2].replace(/''/g, "'");
+          const createdAt = parseInt(match[3]);
+
+          importData.apiKeys.push({ key, label, createdAt });
+        }
+      }
+
+      // Parser webauthnConfig
+      const configInsertMatch = sqlContent.match(/INSERT INTO webauthnConfig.*?VALUES\s*\n([\s\S]*?);/i);
+      if (configInsertMatch) {
+        const valuesContent = configInsertMatch[1];
+        const lines = valuesContent.split(/,\s*\n/).map(line => line.trim());
+        importData.webauthnConfig = {};
+
+        for (const line of lines) {
+          const match = line.match(/\(\s*'([^']*)',\s*'([^']*)'\s*\)$/);
+          if (!match) continue;
+
+          const key = match[1].replace(/''/g, "'");
+          const value = match[2].replace(/''/g, "'");
+
+          try {
+            importData.webauthnConfig[key] = JSON.parse(value);
+          } catch {
+            importData.webauthnConfig[key] = value;
+          }
+        }
+      }
+
+      // Parser books
+      const booksInsertMatch = sqlContent.match(/INSERT INTO books.*?VALUES\s*\n([\s\S]*?);/i);
       if (booksInsertMatch) {
         const valuesContent = booksInsertMatch[1];
         const lines = valuesContent.split(/,\s*\n/).map(line => line.trim());
+        importData.books = [];
 
         for (const line of lines) {
           const match = line.match(/\(\s*(\d+),\s*'([^']*)',\s*'([^']*)',\s*'([^']*)',\s*(\d+),\s*(\d+),\s*(NULL|'[^']*'),\s*(NULL|'[^']*'),\s*(NULL|'[^']*')\s*\)$/);
@@ -748,27 +927,16 @@ export function App() {
           const barcode = match[8] === 'NULL' ? undefined : match[8].slice(1, -1).replace(/''/g, "'");
           const coverUrl = match[9] === 'NULL' ? undefined : match[9].slice(1, -1).replace(/''/g, "'");
 
-          newBooks.push({
-            id,
-            epc,
-            title,
-            author,
-            read,
-            createdAt,
-            isbn,
-            barcode,
-            coverUrl
-          });
+          importData.books.push({ id, epc, title, author, read, createdAt, isbn, barcode, coverUrl });
         }
       }
 
-      // Parser le contenu SQL pour extraire les prêts
+      // Parser loans
       const loansInsertMatch = sqlContent.match(/INSERT INTO loans.*?VALUES\s*\n([\s\S]*?);/i);
-      const newLoans: Loan[] = [];
-
       if (loansInsertMatch) {
         const valuesContent = loansInsertMatch[1];
         const lines = valuesContent.split(/,\s*\n/).map(line => line.trim());
+        importData.loans = [];
 
         for (const line of lines) {
           const match = line.match(/\(\s*(\d+),\s*(\d+),\s*'([^']*)',\s*'([^']*)',\s*'([^']*)',\s*(NULL|'[^']*')\s*\)$/);
@@ -781,28 +949,34 @@ export function App() {
           const dueDate = match[5].replace(/''/g, "'");
           const returnedAt = match[6] === 'NULL' ? undefined : match[6].slice(1, -1).replace(/''/g, "'");
 
-          newLoans.push({
-            id,
-            bookId,
-            borrower,
-            startDate,
-            dueDate,
-            returnedAt
-          });
+          importData.loans.push({ id, bookId, borrower, startDate, dueDate, returnedAt });
         }
       }
 
-      if (newBooks.length === 0 && newLoans.length === 0) {
-        throw new Error('Aucune donnée valide trouvée dans le fichier SQL');
+      // Send to server
+      const response = await fetch('/api/import/full', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(importData),
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          alert('Session expirée. Veuillez vous reconnecter.');
+          return;
+        }
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Erreur serveur: ${response.status}`);
       }
 
-      // Remplacer complètement la base de données
-      // Save to server and reload
-      const success = await saveAndReload(newBooks, newLoans);
+      // Reload data from server
+      await loadInitialData();
 
-      if (success) {
-        alert(`Import SQL réussi: ${newBooks.length} livre(s) et ${newLoans.length} prêt(s) importé(s). La base de données a été complètement remplacée.`);
-      }
+      const bookCount = importData.books?.length || 0;
+      const loanCount = importData.loans?.length || 0;
+      const userCount = importData.users?.length || 0;
+      const passkeyCount = importData.passkeys?.length || 0;
+      alert(`Import SQL complet réussi: ${userCount} utilisateur(s), ${bookCount} livre(s), ${loanCount} prêt(s), ${passkeyCount} clé(s) d'accès. La base de données a été complètement remplacée.`);
     } catch (error: any) {
       alert('Erreur lors de l\'import SQL: ' + (error?.message || 'Format de fichier invalide'));
     }
