@@ -969,14 +969,14 @@ export function App() {
         throw new Error(errorData.message || `Erreur serveur: ${response.status}`);
       }
 
-      // Reload data from server
-      await loadInitialData();
-
       const bookCount = importData.books?.length || 0;
       const loanCount = importData.loans?.length || 0;
       const userCount = importData.users?.length || 0;
       const passkeyCount = importData.passkeys?.length || 0;
-      alert(`Import SQL complet réussi: ${userCount} utilisateur(s), ${bookCount} livre(s), ${loanCount} prêt(s), ${passkeyCount} clé(s) d'accès. La base de données a été complètement remplacée.`);
+      alert(`Import SQL complet réussi: ${userCount} utilisateur(s), ${bookCount} livre(s), ${loanCount} prêt(s), ${passkeyCount} clé(s) d'accès. La base de données a été complètement remplacée. La page va se recharger.`);
+
+      // Reload page to refresh all data
+      window.location.reload();
     } catch (error: any) {
       alert('Erreur lors de l\'import SQL: ' + (error?.message || 'Format de fichier invalide'));
     }
