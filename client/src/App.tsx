@@ -1021,6 +1021,8 @@ export function App() {
               coverUrl: b.coverUrl || undefined,
               ...(b.labelPrinted !== undefined && { labelPrinted: b.labelPrinted }),
               ...(b.labelPrintedAt !== undefined && { labelPrintedAt: b.labelPrintedAt }),
+              ...(b.deleted !== undefined && { deleted: b.deleted }),
+              ...(b.deletedAt !== undefined && { deletedAt: b.deletedAt }),
             }));
             setBooks(migratedBooks);
             if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
@@ -1077,6 +1079,8 @@ export function App() {
               coverUrl: b.coverUrl || undefined,
               ...(b.labelPrinted !== undefined && { labelPrinted: b.labelPrinted }),
               ...(b.labelPrintedAt !== undefined && { labelPrintedAt: b.labelPrintedAt }),
+              ...(b.deleted !== undefined && { deleted: b.deleted }),
+              ...(b.deletedAt !== undefined && { deletedAt: b.deletedAt }),
             }));
             setBooks(migrated);
             setLoans(Array.isArray(loansArr) ? loansArr : []);
@@ -1123,6 +1127,8 @@ export function App() {
                 coverUrl: b.coverUrl || undefined,
                 ...(b.labelPrinted !== undefined && { labelPrinted: b.labelPrinted }),
                 ...(b.labelPrintedAt !== undefined && { labelPrintedAt: b.labelPrintedAt }),
+                ...(b.deleted !== undefined && { deleted: b.deleted }),
+                ...(b.deletedAt !== undefined && { deletedAt: b.deletedAt }),
               })));
               if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
               saveViewCache({ books: d.books, loans: Array.isArray(d.loans) ? d.loans : [] });
@@ -1146,6 +1152,8 @@ export function App() {
                 coverUrl: b.coverUrl || undefined,
                 ...(b.labelPrinted !== undefined && { labelPrinted: b.labelPrinted }),
                 ...(b.labelPrintedAt !== undefined && { labelPrintedAt: b.labelPrintedAt }),
+                ...(b.deleted !== undefined && { deleted: b.deleted }),
+                ...(b.deletedAt !== undefined && { deletedAt: b.deletedAt }),
               })));
               if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
               saveViewCache({ books: d.books, loans: Array.isArray(d.loans) ? d.loans : [] });
