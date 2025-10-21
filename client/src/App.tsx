@@ -67,7 +67,6 @@ export function App() {
   const [sortBy, setSortBy] = useState<'recent' | 'title' | 'author' | 'addedAsc' | 'addedDesc'>('recent');
   const [loans, setLoans] = useState<Loan[]>([]);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
-  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [loanBookId, setLoanBookId] = useState<number | ''>('');
   const [loanBookQuery, setLoanBookQuery] = useState('');
   const [showBookSuggestions, setShowBookSuggestions] = useState(false);
@@ -82,30 +81,7 @@ export function App() {
   const [loanListQuery, setLoanListQuery] = useState('');
   const [route, setRoute] = useState('/livres/disponibles');
   // Pending sync management for offline logout
-  function savePendingSyncPayload(payload?: { books: Book[]; loans: Loan[] }) {
-    try {
-      const data = payload || { books, loans };
-      localStorage.setItem('bm2/pendingSync', JSON.stringify({ ...data, ts: Date.now() }));
-    } catch {}
-  }
-  async function tryFlushPendingSync() {
-    try {
-      const raw = localStorage.getItem('bm2/pendingSync');
-      if (!raw) return;
-      const data = JSON.parse(raw);
-      const res = await fetch('/api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ books: data.books || [], loans: data.loans || [] }) });
-      if (res.ok) {
-        localStorage.removeItem('bm2/pendingSync');
-        const pendingLogout = localStorage.getItem('bm2/pendingLogout') === '1';
-        if (pendingLogout) {
-          try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
-          localStorage.removeItem('bm2/pendingLogout');
-          setMe({ username: null, roles: ['guest'] });
-          if (route !== '/livres/disponibles') navigate('/livres/disponibles');
-        }
-      }
-    } catch {}
-  }
+  // Offline editing removed - all changes require online connection
   // Lightweight wrapper to group advanced settings by theme
   function SettingsBlock({ title, children }: { title: string; children: React.ReactNode }) {
     return (
@@ -770,15 +746,13 @@ export function App() {
 
       // Remplacer complètement la base de données
       setBooks(newBooks);
-      
-      // Forcer une synchronisation immédiate
-      try {
-        await syncToServer(true);
-      } catch (error) {
-        console.warn('Failed to sync after SQL import:', error);
-      }
 
-      alert(`Import SQL réussi: ${newBooks.length} livre(s) importé(s). La base de données a été complètement remplacée.`);
+      // Forcer une synchronisation immédiate
+      const success = await syncAndReload();
+
+      if (success) {
+        alert(`Import SQL réussi: ${newBooks.length} livre(s) importé(s). La base de données a été complètement remplacée.`);
+      }
     } catch (error: any) {
       alert('Erreur lors de l\'import SQL: ' + (error?.message || 'Format de fichier invalide'));
     }
@@ -816,20 +790,11 @@ export function App() {
     setMe({ username: d?.user?.username || null, roles: Array.isArray(d.roles) ? d.roles : ['guest'] });
   }
   async function logout() {
-    // Essayer d'abord de pousser l'état au serveur
-    if (navigator.onLine) {
-      try { await syncToServer(true); } catch {}
-      try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
-      setMe({ username: null, roles: ['guest'] });
-      if (route !== '/livres/disponibles') navigate('/livres/disponibles');
-      return;
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (error) {
+      console.warn('Logout request failed:', error);
     }
-    // Hors ligne: stocker l'état pour envoi différé et marquer une déconnexion en attente
-    savePendingSyncPayload();
-    try { localStorage.setItem('bm2/pendingLogout', '1'); } catch {}
-    // Lorsque l'appareil revient en ligne, on tentera d'envoyer, puis de déconnecter côté serveur
-    window.addEventListener('online', tryFlushPendingSync, { once: true });
-    // Déconnecter l'UI immédiatement
     setMe({ username: null, roles: ['guest'] });
     if (route !== '/livres/disponibles') navigate('/livres/disponibles');
   }
@@ -1006,7 +971,7 @@ export function App() {
     (async () => {
       let loaded = false;
       try {
-        const r = await fetch('/api/state');
+        const r = await fetch('/api/state', { cache: 'no-store' });
         if (r.ok) {
           const d = await r.json();
           if (d && Array.isArray(d.books)) {
@@ -1033,7 +998,7 @@ export function App() {
         } else if (r.status === 401) {
           // Try public, read-only state
           try {
-            const rp = await fetch('/api/state/public');
+            const rp = await fetch('/api/state/public', { cache: 'no-store' });
             if (rp.ok) {
               const d = await rp.json();
               if (d && Array.isArray(d.books)) {
@@ -1098,9 +1063,6 @@ export function App() {
       };
       setLoanStartDate(toISO(today));
       setLoanDueDate(toISO(inDays(14)));
-
-      // Mark initial load as complete
-      setInitialLoadComplete(true);
     })();
   }, []);
 
@@ -1109,15 +1071,6 @@ export function App() {
     (async () => {
       try {
         if (me.username) {
-          // Disable auto-sync during reload
-          setInitialLoadComplete(false);
-
-          // Si on vient de se (re)connecter, tenter de vider une sync en attente
-          if (navigator.onLine) {
-            await tryFlushPendingSync();
-          } else {
-            window.addEventListener('online', tryFlushPendingSync, { once: true });
-          }
           const r = await fetch('/api/state', { cache: 'no-store' });
           if (r.ok) {
             const d = await r.json();
@@ -1139,15 +1092,9 @@ export function App() {
               })));
               if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
               saveViewCache({ books: d.books, loans: Array.isArray(d.loans) ? d.loans : [] });
-
-              // Re-enable auto-sync after reload
-              setInitialLoadComplete(true);
             }
           }
         } else {
-          // Disable auto-sync during reload
-          setInitialLoadComplete(false);
-
           // Logged out -> try public state
           const rp = await fetch('/api/state/public', { cache: 'no-store' });
           if (rp.ok) {
@@ -1170,9 +1117,6 @@ export function App() {
               })));
               if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
               saveViewCache({ books: d.books, loans: Array.isArray(d.loans) ? d.loans : [] });
-
-              // Re-enable auto-sync after reload
-              setInitialLoadComplete(true);
             }
           }
         }
@@ -1184,72 +1128,74 @@ export function App() {
 
   // Ne plus persister les modifications en local; la cache de visualisation est écrite après un fetch serveur.
 
-  // Server sync function
-  const syncToServer = async (immediate = false) => {
-    if (!navigator.onLine) { throw new Error('offline'); }
-    if (!immediate) setSyncStatus('syncing');
+  // Sync to server and reload data
+  const syncAndReload = async () => {
+    if (!navigator.onLine) {
+      alert('Vous devez être connecté à Internet pour effectuer des modifications.');
+      return false;
+    }
+
+    setSyncStatus('syncing');
+
     try {
-      const response = await fetch('/api/state', {
+      // Save current state to server
+      const saveResponse = await fetch('/api/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ books, loans }),
       });
-      if (response.ok) {
-        if (!immediate) setSyncStatus('success');
-      } else if (response.status === 401) {
-        // Pas de session : on enregistre une sync en attente que l'on poussera à la reconnexion utilisateur
-        savePendingSyncPayload();
-        if (!immediate) setSyncStatus('error');
-      } else {
-        if (!immediate) {
-          setSyncStatus('error');
-          console.warn('Server sync failed, data saved locally only');
+
+      if (!saveResponse.ok) {
+        if (saveResponse.status === 401) {
+          alert('Session expirée. Veuillez vous reconnecter.');
+        } else {
+          alert('Erreur lors de la sauvegarde sur le serveur.');
+        }
+        setSyncStatus('error');
+        setTimeout(() => setSyncStatus('idle'), 2000);
+        return false;
+      }
+
+      // Reload data from server to ensure consistency
+      const loadResponse = await fetch('/api/state', { cache: 'no-store' });
+      if (loadResponse.ok) {
+        const d = await loadResponse.json();
+        if (d && Array.isArray(d.books)) {
+          setBooks((d.books as any[]).map((b: any) => ({
+            id: typeof b.id === 'number' ? b.id : Date.now(),
+            epc: typeof b.epc === 'string' && /^([0-9A-Fa-f]{24})$/.test(b.epc) ? String(b.epc).toUpperCase() : genEpc96(),
+            title: String(b.title || ''),
+            author: String(b.author || ''),
+            read: !!b.read,
+            createdAt: typeof b.createdAt === 'number' ? b.createdAt : Date.now(),
+            isbn: b.isbn || undefined,
+            barcode: b.barcode || undefined,
+            coverUrl: b.coverUrl || undefined,
+            ...(b.labelPrinted !== undefined && { labelPrinted: b.labelPrinted }),
+            ...(b.labelPrintedAt !== undefined && { labelPrintedAt: b.labelPrintedAt }),
+            ...(b.deleted !== undefined && { deleted: b.deleted }),
+            ...(b.deletedAt !== undefined && { deletedAt: b.deletedAt }),
+          })));
+          if (Array.isArray(d.loans)) setLoans(d.loans as Loan[]);
+          saveViewCache({ books: d.books, loans: Array.isArray(d.loans) ? d.loans : [] });
         }
       }
-    } catch (error) {
-      // Hors ligne: persister la sync en attente
-      savePendingSyncPayload();
-      if (!immediate) {
-        setSyncStatus('error');
-        console.warn('Server sync failed, data saved locally only:', error);
-      }
-    }
-    
-    // Reset status after delay
-    if (!immediate) {
+
+      setSyncStatus('success');
       setTimeout(() => setSyncStatus('idle'), 2000);
+      return true;
+    } catch (error) {
+      console.error('Sync and reload failed:', error);
+      alert('Erreur de connexion au serveur.');
+      setSyncStatus('error');
+      setTimeout(() => setSyncStatus('idle'), 2000);
+      return false;
     }
   };
 
-  // Server sync (debounced for normal changes)
-  useEffect(() => {
-    // Don't sync during initial load to avoid overwriting server state
-    if (!initialLoadComplete) return;
+  // No automatic sync - all changes must be explicitly saved via syncAndReload
 
-    const t = setTimeout(() => {
-      syncToServer(false);
-    }, 500);
-    return () => clearTimeout(t);
-  }, [books, loans, initialLoadComplete]);
-
-  // Immediate sync before page unload to prevent data loss
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      // Use sendBeacon for reliable sync during page unload
-      if (navigator.sendBeacon && books.length > 0) {
-        try {
-          const payload = JSON.stringify({ books, loans });
-          const blob = new Blob([payload], { type: 'application/json' });
-          navigator.sendBeacon('/api/state', blob);
-        } catch {}
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [books, loans]);
-
-  function addBook() {
+  async function addBook() {
     if (!requireEdit()) return;
     if (isAddDisabled) return;
     const cleanIsbn = isbn.replace(/[^0-9Xx]/g, '').toUpperCase();
@@ -1272,42 +1218,54 @@ export function App() {
     setAuthor('');
     setIsbn('');
     setBarcode('');
+
+    // Save to server and reload
+    await syncAndReload();
   }
 
-  function removeBook(id: number) {
+  async function removeBook(id: number) {
     if (!requireEdit()) return;
     const book = books.find(b => b.id === id);
     const bookTitle = book ? book.title : 'ce livre';
-    
+
     if (!confirm(`Êtes-vous sûr de vouloir mettre "${bookTitle}" à la corbeille ?`)) {
       return;
     }
-    
-    setBooks((prev) => prev.map((b) => 
+
+    setBooks((prev) => prev.map((b) =>
       b.id === id ? { ...b, deleted: true, deletedAt: Date.now() } : b
     ));
+
+    // Save to server and reload
+    await syncAndReload();
   }
 
-  function restoreBook(id: number) {
+  async function restoreBook(id: number) {
     if (!requireEdit()) return;
-    setBooks((prev) => prev.map((b) => 
+    setBooks((prev) => prev.map((b) =>
       b.id === id ? { ...b, deleted: false, deletedAt: undefined } : b
     ));
+
+    // Save to server and reload
+    await syncAndReload();
   }
 
-  function permanentDeleteBook(id: number) {
+  async function permanentDeleteBook(id: number) {
     if (!requireEdit()) return;
     const book = books.find(b => b.id === id);
     const bookTitle = book ? book.title : 'ce livre';
-    
+
     if (!confirm(`Êtes-vous sûr de vouloir supprimer définitivement "${bookTitle}" ? Cette action est irréversible.`)) {
       return;
     }
-    
+
     setBooks((prev) => prev.filter((b) => b.id !== id));
+
+    // Save to server and reload
+    await syncAndReload();
   }
 
-  function saveBookEdit(id: number, patch: Partial<Book>) {
+  async function saveBookEdit(id: number, patch: Partial<Book>) {
     if (!requireEdit()) return;
     setBooks((prev) =>
       prev.map((b) => {
@@ -1325,9 +1283,12 @@ export function App() {
       }),
     );
     setEditingBookId(null);
+
+    // Save to server and reload
+    await syncAndReload();
   }
 
-  function updateBookData(id: number, patch: Partial<Book>) {
+  async function updateBookData(id: number, patch: Partial<Book>) {
     setBooks((prev) =>
       prev.map((b) => {
         if (b.id !== id) return b;
@@ -1343,6 +1304,9 @@ export function App() {
         return next;
       }),
     );
+
+    // Save to server and reload
+    await syncAndReload();
   }
 
   function toggleRead(id: number) {
@@ -2235,7 +2199,7 @@ export function App() {
     }
   }
 
-  function addLoan() {
+  async function addLoan() {
     if (!requireEdit()) return;
     if (!loanBookId || loanBorrower.trim() === '' || loanStartDate === '' || loanDueDate === '') return;
     setLoans((prev) => [
@@ -2250,16 +2214,26 @@ export function App() {
     ]);
     setLoanBorrower('');
     setLoanBookId('');
+
+    // Save to server and reload
+    await syncAndReload();
   }
 
-  function returnLoan(id: number) {
+  async function returnLoan(id: number) {
     if (!requireEdit()) return;
     const today = new Date().toISOString().slice(0, 10);
     setLoans((prev) => prev.map((l) => (l.id === id ? { ...l, returnedAt: today } : l)));
+
+    // Save to server and reload
+    await syncAndReload();
   }
-  function deleteLoan(id: number) {
+
+  async function deleteLoan(id: number) {
     if (!requireEdit()) return;
     setLoans((prev) => prev.filter((x) => x.id !== id));
+
+    // Save to server and reload
+    await syncAndReload();
   }
 
   const loanUtils = {
@@ -3229,14 +3203,10 @@ export function App() {
     }
     
     setImportItems((prev) => prev.filter((it) => it.status !== 'ok'));
-    
+
     // Force immediate sync after import to prevent data loss
     if (toAdd.length > 0) {
-      try {
-        await syncToServer(true);
-      } catch (error) {
-        console.warn('Failed to sync after import:', error);
-      }
+      await syncAndReload();
     }
 
     if (allRelevantIds.length > 0) {
@@ -5270,36 +5240,38 @@ export function App() {
                 </p>
                 
                 <div style={{ marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  <button 
-                    onClick={() => {
+                  <button
+                    onClick={async () => {
                       if (!requireEdit()) return;
                       if (confirm('Êtes-vous sûr de vouloir vider entièrement la corbeille ? Cette action est irréversible.')) {
                         setBooks(prev => prev.filter(b => !b.deleted));
+                        await syncAndReload();
                       }
                     }}
-                    style={{ 
-                      padding: '8px 12px', 
-                      borderRadius: 6, 
-                      border: '1px solid var(--danger)', 
-                      background: 'var(--danger)', 
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: 6,
+                      border: '1px solid var(--danger)',
+                      background: 'var(--danger)',
                       color: 'white',
                       fontWeight: 500
                     }}
                   >
                     Vider la corbeille
                   </button>
-                  <button 
-                    onClick={() => {
+                  <button
+                    onClick={async () => {
                       if (!requireEdit()) return;
                       if (confirm('Êtes-vous sûr de vouloir restaurer tous les livres de la corbeille ?')) {
                         setBooks(prev => prev.map(b => b.deleted ? { ...b, deleted: false, deletedAt: undefined } : b));
+                        await syncAndReload();
                       }
                     }}
-                    style={{ 
-                      padding: '8px 12px', 
-                      borderRadius: 6, 
-                      border: '1px solid var(--success)', 
-                      background: 'var(--success)', 
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: 6,
+                      border: '1px solid var(--success)',
+                      background: 'var(--success)',
                       color: 'white',
                       fontWeight: 500
                     }}
